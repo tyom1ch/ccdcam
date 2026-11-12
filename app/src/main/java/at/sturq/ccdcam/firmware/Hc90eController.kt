@@ -45,6 +45,8 @@ class Hc90eController(
         fun setPhotoMode(photo: Boolean)
         /** Indicator quads to burn into the recording, or null for none (BURN OSD OFF). */
         fun setVideoOsd(quads: List<OsdQuad>?)
+        /** OSD width (LCD units) of the recorded frame: 1024 for 16:9, 768 for 4:3. */
+        fun videoOsdWidth(): Float
         /** NightShot look on/off for both processors (+ exposure lift). */
         fun setNightShot(on: Boolean)
         /** Phone torch ("LIGHT"). Returns false if the camera has no flash unit. */
@@ -98,7 +100,7 @@ class Hc90eController(
     private fun refreshVideoOsd() {
         val quads = if (navigator.settings.burnOsdOn && navigator.lamp == Lamp.TAPE) {
             b.firmwareOsd.indicators(SystemClock.uptimeMillis(), forVideo = true)?.let {
-                OsdLayout.quads(OsdScene.build(it, forVideo = true), osdRes.first, osdRes.second)
+                OsdLayout.quads(OsdScene.build(it, forVideo = true, lcdW = host.videoOsdWidth()), osdRes.first, osdRes.second)
             }
         } else null
         if (quads != lastVideoOsd) {

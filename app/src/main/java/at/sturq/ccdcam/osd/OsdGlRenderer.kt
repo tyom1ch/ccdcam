@@ -29,6 +29,7 @@ class OsdGlRenderer(context: Context) {
     private var uAtlas = -1
 
     private var builtFor: List<OsdQuad>? = null
+    private var builtW = 0f
     private var vertices: FloatBuffer? = null
     private var vertexCount = 0
 
@@ -54,9 +55,9 @@ class OsdGlRenderer(context: Context) {
     }
 
     /** Rebuilds the vertex buffer only when [quads] changed. */
-    private fun upload(quads: List<OsdQuad>) {
-        if (builtFor === quads) return
-        val data = OsdVertices.build(quads, atlas.width, atlas.height)
+    private fun upload(quads: List<OsdQuad>, lcdW: Float) {
+        if (builtFor === quads && builtW == lcdW) return
+        val data = OsdVertices.build(quads, atlas.width, atlas.height, lcdW)
         val buf = vertices?.takeIf { it.capacity() >= data.size }
             ?: ByteBuffer.allocateDirect(maxOf(data.size, 64) * 4).order(ByteOrder.nativeOrder()).asFloatBuffer()
         buf.clear()
@@ -65,13 +66,14 @@ class OsdGlRenderer(context: Context) {
         vertices = buf
         vertexCount = data.size / OsdVertices.FLOATS_PER_VERTEX
         builtFor = quads
+        builtW = lcdW
     }
 
     /** Draws [quads] into the current surface; [lcdToBuffer] is a column-major mat3. */
-    fun draw(quads: List<OsdQuad>, lcdToBuffer: FloatArray) {
+    fun draw(quads: List<OsdQuad>, lcdToBuffer: FloatArray, lcdW: Float = OsdScene.LCD_W) {
         if (quads.isEmpty()) return
         ensureInit()
-        upload(quads)
+        upload(quads, lcdW)
         val buf = vertices ?: return
         GLES20.glUseProgram(program)
         GLES20.glEnable(GLES20.GL_BLEND)
@@ -110,11 +112,11 @@ class OsdGlRenderer(context: Context) {
 object OsdVertices {
     const val FLOATS_PER_VERTEX = 8
 
-    fun build(quads: List<OsdQuad>, atlasW: Int, atlasH: Int): FloatArray {
+    fun build(quads: List<OsdQuad>, atlasW: Int, atlasH: Int, lcdW: Float = OsdScene.LCD_W): FloatArray {
         val out = FloatArray(quads.size * 6 * FLOATS_PER_VERTEX)
         var i = 0
         fun v(x: Float, y: Float, u: Float, t: Float, c: Int) {
-            out[i++] = x / OsdScene.LCD_W
+            out[i++] = x / lcdW
             out[i++] = 1f - y / OsdScene.LCD_H        // LCD units are y-down, GL uv is y-up
             out[i++] = u
             out[i++] = t

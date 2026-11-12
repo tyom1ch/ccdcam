@@ -62,6 +62,9 @@ class CcdSurfaceProcessor(
 
     /** Burned-in OSD quads (LCD units), or null for none. Replaced, never mutated. */
     @Volatile var osdQuads: List<OsdQuad>? = null
+
+    /** Width in LCD units the OSD quads were laid out for (1024 = 16:9, 768 = 4:3). */
+    @Volatile var osdLcdWidth: Float = at.sturq.ccdcam.osd.OsdScene.LCD_W
     private val handler = Handler(thread.looper)
     val executor: Executor = Executor { r -> handler.post(r) }
 
@@ -285,7 +288,7 @@ class CcdSurfaceProcessor(
 
         val quads = osdQuads
         val lcd = entry.lcdToBuffer
-        if (osd != null && quads != null && lcd != null) osd.draw(quads, lcd)
+        if (osd != null && quads != null && lcd != null) osd.draw(quads, lcd, osdLcdWidth)
     }
 
     /** Recomputes picture-space matrices only when the framing or this output changes. */
