@@ -14,6 +14,8 @@ class ProfilesTest {
         assertEquals(576f, p.ccdY)
         assertEquals(576f, p.lines)
         assertTrue(p.hBlur > 0f)
+        // PAL DV samples colour 4:2:0
+        assertEquals(1f, p.chroma420)
     }
 
     /** Guards the look against accidental edits; change together with tools/sim.py. */

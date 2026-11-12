@@ -28,6 +28,8 @@ data class ShaderParams(
     val chromaShift: Float,
     /** Horizontal low-pass within a CCD cell, in cells (0 = off, exact original sampling). */
     val hBlur: Float,
+    /** PAL DV 4:2:0 chroma subsampling strength, 0 = off, 1 = full. */
+    val chroma420: Float = 0f,
 )
 
 /**

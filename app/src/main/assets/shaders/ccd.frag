@@ -32,6 +32,7 @@ uniform float uScanlineAmp;
 uniform float uVignetteStrength;
 uniform float uChromaShift;
 uniform float uHBlur;          // horizontal low-pass, in CCD cells; 0 = original sampling
+uniform float uChroma420;      // 0..1: PAL DV 4:2:0 chroma (colour shared by 2x2 cells, BT.601)
 uniform float uNightShot;      // 1 = NightShot look (visual emulation, no IR involved)
 
 // GLSL ES 2.0 needs constant loop bounds, so sample counts stay compile-time constants.
@@ -85,6 +86,20 @@ void main() {
     float g = sampleCell(uv).g;
     float b = sampleCell(ccdGrid(baseUv + vec2(-uChromaShift, 0.0))).b;
     vec3 col = vec3(r, g, b);
+
+    // PAL DV 4:2:0: luma per cell, colour averaged over the 2x2 cell block (BT.601 Y'CbCr).
+    if (uChroma420 > 0.0) {
+        vec2 cell = vec2(uCcdX, uCcdY);
+        vec2 blk = (floor(baseUv * cell * 0.5) * 2.0 + 1.0) / cell;   // shared corner of the block
+        vec2 d = 0.5 / cell;
+        vec3 c = 0.25 * (sampleAt(blk - d).rgb + sampleAt(blk + d).rgb
+                       + sampleAt(blk + vec2(d.x, -d.y)).rgb + sampleAt(blk + vec2(-d.x, d.y)).rgb);
+        float y = dot(col, vec3(0.299, 0.587, 0.114));
+        float cb = dot(c, vec3(-0.168736, -0.331264, 0.5));
+        float cr = dot(c, vec3(0.5, -0.418688, -0.081312));
+        vec3 sub = vec3(y + 1.402 * cr, y - 0.344136 * cb - 0.714136 * cr, y + 1.772 * cb);
+        col = mix(col, sub, uChroma420);
+    }
 
     // Skipping at zero strength is exact: the result would be multiplied by 0.0 anyway.
     if (uSmearStrength > 0.0) {
