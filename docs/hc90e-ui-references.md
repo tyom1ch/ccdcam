@@ -90,3 +90,17 @@ warnings) are Confirmed (HC90E, M-E p. 54 and p. 99).
 ## Corrections to earlier notes
 - **Super NightShot is documented for the HC90E**: `SUPER NS (Super NightShot)` and `NS LIGHT`
   are in the CAMERA SET menu (M-E p. 36 and index). `docs/hc90e-reference.md` is updated.
+
+## OSD font (stage 6)
+
+| Item | Source | Confidence |
+|---|---|---|
+| Base glyphs | **PhoenixVGA 8x14**, *The Ultimate Oldschool PC Font Pack* v2.2 by VileR (<https://int10h.org/oldschool-pc-fonts/>), via <https://github.com/rotordeck/osd-fonts> `fonts/pc/Bm437_PhoenixVGA_8x14.FON` (sha256 `2a5da7ff…5608`). **CC BY-SA 4.0** (text in `app/src/main/assets/licenses/PhoenixVGA-CC-BY-SA-4.0.txt`); one-way compatible with GPL-3.0. | font origin: Confirmed |
+| Adaptations | zero without slash; sans-serif `1 4 B E L P R T Y i` (PhoenixVGA has slab serifs); the real HC90 OSD is a plain sans with a 1 px dark border (ITmedia 28035/28036/28039, zoomed). Adapted glyphs stay CC BY-SA 4.0. | Approximation of the Sony face |
+| Metrics | digits tabular (8 px), `:` narrow centred slot (5 px), other characters proportional (ink + 1 px). OSD pixel = 4.2 × 4.0 LCD units on a 1024 × 576 LCD: cap height 0.063 and `0:06:05` width 0.205 of the LCD, measured on ITmedia 28035. | measured from photos |
+| Outline | 1 px black border baked into the atlas (8-neighbour dilation), like the LCD characters. | Confirmed (HC90 photos) |
+| Pictograms | battery (5 levels), cassette, boxed SP/LP, play/pause/stop: original pixel art of this project (GPL-3.0), drawn after the guide's indicator figures. | Approximation |
+
+Build: `python tools/build_osd_font.py Bm437_PhoenixVGA_8x14.FON app/src/main/assets/osd/hc90e_osd_font.txt`.
+Rendering: one atlas, sampled with `GL_NEAREST` in the burned-in pass and unfiltered `drawBitmap`
+in the preview, so both show the same pixels.

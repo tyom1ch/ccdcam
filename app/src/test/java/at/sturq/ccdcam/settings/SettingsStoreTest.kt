@@ -37,6 +37,7 @@ class SettingsStoreTest {
     @Test
     fun firmwareDefaultsOnFreshInstall() {
         assertEquals(FirmwareSettings(), SettingsStore(FakePrefs()).firmware)
+        assertEquals(FirmwareSettings.BURN_OSD_OFF, SettingsStore(FakePrefs()).firmware.burnOsd)
     }
 
     @Test
@@ -48,7 +49,7 @@ class SettingsStoreTest {
             recMode = RecMode.LP, audioMode = FirmwareSettings.AUDIO_16BIT,
             dataCode = FirmwareSettings.DATA_CODE_DATE_TIME, remaining = FirmwareSettings.REMAINING_ON,
             beep = FirmwareSettings.BEEP_OFF, menuRotate = FirmwareSettings.MENU_ROTATE_OPPOSITE,
-            cassette = tape,
+            burnOsd = FirmwareSettings.BURN_OSD_ON, cassette = tape,
         )
         store.firmware = s
         assertEquals(s, SettingsStore(prefs).firmware)

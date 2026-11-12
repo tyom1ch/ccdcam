@@ -6,6 +6,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.MediaStore
 import android.util.Log
 import android.view.View
@@ -13,6 +14,10 @@ import android.widget.Toast
 import androidx.core.content.ContextCompat
 import at.sturq.ccdcam.R
 import at.sturq.ccdcam.databinding.ActivityMainBinding
+import at.sturq.ccdcam.osd.OsdLayout
+import at.sturq.ccdcam.osd.OsdQuad
+import at.sturq.ccdcam.osd.OsdResources
+import at.sturq.ccdcam.osd.OsdScene
 import at.sturq.ccdcam.settings.SettingsStore
 import java.util.concurrent.Executors
 
@@ -38,6 +43,8 @@ class Hc90eController(
         fun cameraOff()
         /** Camera mode for the shared shutter: true = still photo (MEMORY), false = movie (TAPE). */
         fun setPhotoMode(photo: Boolean)
+        /** Indicator quads to burn into the recording, or null for none (BURN OSD OFF). */
+        fun setVideoOsd(quads: List<OsdQuad>?)
     }
 
     val navigator = FirmwareNavigator(store.firmware, Lamp.TAPE)
@@ -65,6 +72,35 @@ class Hc90eController(
         host.setPhotoMode(false)
         powerOn()
         updateLampLabels()
+        main.post(videoOsdTicker)
+    }
+
+    // ================= burned-in OSD =================
+
+    private val osdRes = OsdResources.get(context)
+    private var lastVideoOsd: List<OsdQuad>? = null
+
+    /**
+     * Rebuilds the burned-in indicator layer and hands it to the video processor only when it
+     * changed (≈1 Hz while recording: the counter). The GL side just draws the latest list.
+     */
+    private fun refreshVideoOsd() {
+        val quads = if (navigator.settings.burnOsdOn && navigator.lamp == Lamp.TAPE) {
+            b.firmwareOsd.indicators(SystemClock.uptimeMillis(), forVideo = true)?.let {
+                OsdLayout.quads(OsdScene.build(it, forVideo = true), osdRes.first, osdRes.second)
+            }
+        } else null
+        if (quads != lastVideoOsd) {
+            lastVideoOsd = quads
+            host.setVideoOsd(quads)
+        }
+    }
+
+    private val videoOsdTicker = object : Runnable {
+        override fun run() {
+            refreshVideoOsd()
+            main.postDelayed(this, 200)
+        }
     }
 
     /** POWER switch moved to a camera lamp: date/time ~5 s, REMAINING AUTO ~8 s. */
@@ -143,6 +179,7 @@ class Hc90eController(
         playBeep(Beep.REC_START)
         b.firmwareOsd.sceneMs = 0
         b.firmwareOsd.recording = true
+        refreshVideoOsd()   // REC from the first frames, not after the next tick
     }
 
     /** Recording progress; stops the recording when the virtual tape runs out. */
@@ -162,6 +199,7 @@ class Hc90eController(
         playBeep(Beep.REC_STOP)
         b.firmwareOsd.recording = false
         b.firmwareOsd.sceneMs = 0
+        refreshVideoOsd()
         val s = navigator.settings
         val cassette = s.cassette
         if (saved && cassette != null) saveSettings(s.copy(cassette = cassette.afterRecording(sceneMs, s.recMode)))
@@ -180,7 +218,7 @@ class Hc90eController(
     override fun onNavEffect(effect: NavEffect) {
         when (effect) {
             NavEffect.None -> Unit
-            is NavEffect.SettingsChanged -> saveSettings(effect.settings)
+            is NavEffect.SettingsChanged -> { saveSettings(effect.settings); refreshVideoOsd() }
             NavEffect.EndSearch -> endSearch()
         }
         b.firmwareOsd.invalidate()
@@ -323,7 +361,7 @@ class Hc90eController(
         b.firmwareOsd.playbackPositionMs = before + pos
     }
 
-    /** Recorded scenes in Movies/CCDCam, oldest first: the order they were "taped". */
+    /** Recorded scenes (Movies/Handycam and legacy Movies/CCDCam), oldest first: tape order. */
     @Suppress("DEPRECATION") // MediaColumns.DATA is the only path filter before API 29
     private fun queryClips(): List<Clip> {
         val out = ArrayList<Clip>()
@@ -332,10 +370,13 @@ class Hc90eController(
             MediaStore.Video.Media._ID, MediaStore.Video.Media.DURATION,
             MediaStore.Video.Media.DATE_TAKEN, MediaStore.Video.Media.DATE_ADDED,
         )
+        // New scenes go to Movies/Handycam; scenes from before the rename stay in Movies/CCDCam.
         val (selection, args) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            "${MediaStore.Video.Media.RELATIVE_PATH} LIKE ?" to arrayOf("Movies/CCDCam%")
+            val col = MediaStore.Video.Media.RELATIVE_PATH
+            "($col LIKE ? OR $col LIKE ?)" to arrayOf("$MOVIES_DIR%", "$LEGACY_MOVIES_DIR%")
         } else {
-            "${MediaStore.Video.Media.DATA} LIKE ?" to arrayOf("%/Movies/CCDCam/%")
+            val col = MediaStore.Video.Media.DATA
+            "($col LIKE ? OR $col LIKE ?)" to arrayOf("%/$MOVIES_DIR/%", "%/$LEGACY_MOVIES_DIR/%")
         }
         try {
             context.contentResolver.query(uri, projection, selection, args, "${MediaStore.Video.Media.DATE_ADDED} ASC")?.use { c ->
@@ -365,6 +406,11 @@ class Hc90eController(
     companion object {
         private const val TAG = "HC90eController"
         private const val PAUSE_LIMIT_MS = 3L * 60_000
+
+        /** MediaStore folders: new recordings / photos, and the pre-rename video folder. */
+        const val MOVIES_DIR = "Movies/Handycam"
+        const val PICTURES_DIR = "Pictures/Handycam"
+        const val LEGACY_MOVIES_DIR = "Movies/CCDCam"
 
         // Exact wording from the DCR-HC90E Operating Guide (p. 98-99) / HC90 guide p. 31.
         const val MSG_INSERT_CASSETTE = "Insert a cassette"

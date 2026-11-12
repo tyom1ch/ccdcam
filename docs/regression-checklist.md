@@ -123,3 +123,16 @@ rebinds CameraX); the firmware display and the body-control labels rotate with t
 - [ ] Rotate during recording: recording continues; the OSD and the recorded picture both stay
       in the orientation the recording started with; after STOP the OSD follows the phone again.
 - [ ] MEMORY / TAPE / PLAY/EDIT and WIDE stay fixed (they are printed on the camcorder body).
+
+## 12. OSD burn-in (stage 6 onward)
+Since stage 6 the preview and the recording are **separate camera streams** (one CameraEffect
+per target) — re-check recording, A/V sync and saving (sections 2–5) carefully.
+- [ ] `BURN OSD` is OFF by default (STANDARD SET / P-MENU 3/3): recorded MP4 has no OSD.
+- [ ] `BURN OSD` ON: the MP4 shows battery, `SP`/`LP`, red `REC`, counter running, remaining
+      tape + cassette, date and time — and **no** buttons, menus or messages.
+- [ ] The burned OSD is upright, not mirrored, not stretched, in 16:9 and 4:3 (bars), landscape
+      and portrait recordings, back and front camera.
+- [ ] OSD pixels look crisp (no blur) in the MP4; same glyphs as on the preview.
+- [ ] Counter in the MP4 matches the preview counter (±1 s), REC visible from the first frames.
+- [ ] New files go to `Movies/Handycam` / `Pictures/Handycam`; old `Movies/CCDCam` files untouched
+      and still play in PLAY/EDIT, in recording order together with the new ones.

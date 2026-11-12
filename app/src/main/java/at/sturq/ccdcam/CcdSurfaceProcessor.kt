@@ -18,6 +18,8 @@ import androidx.camera.core.SurfaceOutput
 import androidx.camera.core.SurfaceProcessor
 import androidx.camera.core.SurfaceRequest
 import at.sturq.ccdcam.geometry.EffectGeometry
+import at.sturq.ccdcam.osd.OsdGlRenderer
+import at.sturq.ccdcam.osd.OsdQuad
 import at.sturq.ccdcam.profile.CameraProfile
 import at.sturq.ccdcam.profile.Profiles
 import java.nio.ByteBuffer
@@ -26,21 +28,29 @@ import java.nio.FloatBuffer
 import java.util.concurrent.Executor
 
 /**
- * Runs ccd.frag/passthrough.vert across every UseCase bound to a CameraEffect.
+ * Runs ccd.frag/passthrough.vert for the UseCase(s) bound to its CameraEffect.
  *
- * One shared EGL context, one SurfaceTexture for the camera input, N EGLSurfaces (one per
- * output: preview, video encoder). Each frame from the camera is drawn to every output with
- * the per-output transform supplied by [SurfaceOutput.updateTransformMatrix], so CameraX
- * handles rotation natively — we only do the look.
+ * One EGL context, one SurfaceTexture for the camera input, one EGLSurface per output. The app
+ * uses two instances — one for PREVIEW, one for VIDEO_CAPTURE — so each gets its own camera
+ * stream and the burned-in OSD ([burnsOsd]) reaches the recording only.
  */
-class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
+class CcdSurfaceProcessor(
+    context: Context,
+    name: String = "CcdProcessor",
+    /** Draws [osdQuads] over the picture (video instance only). */
+    private val burnsOsd: Boolean = false,
+) : SurfaceProcessor {
 
     private val vertexSrc = context.assets.open("shaders/passthrough.vert")
         .bufferedReader().use { it.readText() }
     private val fragmentSrc = context.assets.open("shaders/ccd.frag")
         .bufferedReader().use { it.readText() }
 
-    private val thread = HandlerThread("CcdProcessor").apply { start() }
+    private val thread = HandlerThread(name).apply { start() }
+    private val osd: OsdGlRenderer? = if (burnsOsd) OsdGlRenderer(context) else null
+
+    /** Burned-in OSD quads (LCD units), or null for none. Replaced, never mutated. */
+    @Volatile var osdQuads: List<OsdQuad>? = null
     private val handler = Handler(thread.looper)
     val executor: Executor = Executor { r -> handler.post(r) }
 
@@ -50,8 +60,8 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
     /**
      * Inputs for the upright picture geometry (geometry/EffectGeometry.kt).
      *
-     * @param regionAspect width/height, buffer (sensor) orientation, of the centred region the
-     *   downstream preview and video crops share
+     * @param regionAspect width/height, buffer orientation, of the centred region of the output
+     *   buffer the picture lives in; null = the whole buffer (each output is its own stream)
      * @param pictureAspect upright width/height of the emulated picture (4/3 or 16/9)
      * @param sensorRotationDegrees CameraInfo.getSensorRotationDegrees(targetRotation): CW
      *   rotation CameraX applies (pixels and/or MP4 metadata) to make the sensor image upright
@@ -59,13 +69,13 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
      *   (16:9 for HC90E), or null for the whole region
      */
     data class Framing(
-        val regionAspect: Float,
+        val regionAspect: Float?,
         val pictureAspect: Float,
         val sensorRotationDegrees: Int,
         val lcdAspect: Float? = null,
     )
 
-    @Volatile var framing: Framing = Framing(16f / 9f, 16f / 9f, 0)
+    @Volatile var framing: Framing = Framing(null, 16f / 9f, 0)
 
     // EGL state — initialized lazily on processor thread
     private var eglDisplay: EGLDisplay = EGL14.EGL_NO_DISPLAY
@@ -107,6 +117,7 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
         var cachedFor: Pair<Framing, Int>? = null
         var bufferToEffect: FloatArray? = null
         var effectToBuffer: FloatArray? = null
+        var lcdToBuffer: FloatArray? = null
     }
 
     override fun onInputSurface(request: SurfaceRequest) {
@@ -221,6 +232,10 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
         GLES20.glDisableVertexAttribArray(aPosLoc)
         GLES20.glDisableVertexAttribArray(aTexLoc)
+
+        val quads = osdQuads
+        val lcd = entry.lcdToBuffer
+        if (osd != null && quads != null && lcd != null) osd.draw(quads, lcd)
     }
 
     /** Recomputes picture-space matrices only when the framing or this output changes. */
@@ -228,11 +243,13 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
         val uprightCw = ((fr.sensorRotationDegrees - entry.sensorToBufferCw) % 360 + 360) % 360
         val key = fr to uprightCw
         if (entry.cachedFor == key) return
+        val region = fr.regionAspect ?: (entry.width.toFloat() / entry.height)
         val g = EffectGeometry.compute(
-            entry.width, entry.height, fr.regionAspect, uprightCw, fr.pictureAspect, fr.lcdAspect,
+            entry.width, entry.height, region, uprightCw, fr.pictureAspect, fr.lcdAspect,
         )
         entry.bufferToEffect = g.bufferToEffect.toGlMat3()
         entry.effectToBuffer = g.effectToBuffer.toGlMat3()
+        entry.lcdToBuffer = g.lcdToBuffer.toGlMat3()
         entry.cachedFor = key
         Log.i(TAG, "picture geometry: buffer=${entry.width}x${entry.height} $fr uprightCw=$uprightCw")
     }
@@ -322,7 +339,8 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
                     EGL14.eglDestroySurface(eglDisplay, pbufferSurface)
                 if (eglContext != EGL14.EGL_NO_CONTEXT)
                     EGL14.eglDestroyContext(eglDisplay, eglContext)
-                EGL14.eglTerminate(eglDisplay)
+                // No eglTerminate: EGL_DEFAULT_DISPLAY is shared by both processor instances;
+                // terminating it here could break the other one. The process owns the display.
             }
             thread.quitSafely()
         }

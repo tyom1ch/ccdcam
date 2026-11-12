@@ -75,6 +75,11 @@ data class Affine(
 class EffectGeometry(
     val effectToBuffer: Affine,
     val bufferToEffect: Affine,
+    /**
+     * Upright LCD (container) uv → buffer uv: where the burned-in OSD goes. Same rotation and
+     * centring as the picture, so the OSD lines up with the picture and its bars.
+     */
+    val lcdToBuffer: Affine = effectToBuffer,
 ) {
     companion object {
         /**
@@ -125,7 +130,8 @@ class EffectGeometry(
             val uprightToRegion = Affine.quarterTurnsCcw(turnsCw)
             val regionToBuffer = Affine.scaleAboutCenter(rw, rh)
             val effectToBuffer = regionToBuffer * uprightToRegion * pictureToUpright
-            return EffectGeometry(effectToBuffer, effectToBuffer.inverse())
+            val lcdToBuffer = regionToBuffer * uprightToRegion * Affine.scaleAboutCenter(cw, ch)
+            return EffectGeometry(effectToBuffer, effectToBuffer.inverse(), lcdToBuffer)
         }
 
         /** Fraction (w, h) of a container of aspect [containerAspect] covered by a centred

@@ -59,6 +59,15 @@ class ShaderUniformsTest {
     }
 
     @Test
+    fun osdShadersDeclareWhatTheRendererBinds() {
+        val v = shader("osd.vert")
+        val f = shader("osd.frag")
+        for (a in listOf("aPos", "aUv", "aColor")) assertTrue(a, Regex("""attribute\s+\w+\s+$a\s*;""").containsMatchIn(v))
+        assertEquals("mat3", uniformsOf(v)["uLcdToBuffer"])
+        assertEquals("sampler2D", uniformsOf(f)["sAtlas"])
+    }
+
+    @Test
     fun pictureSpaceVaryingIsWired() {
         assertTrue(Regex("""varying\s+vec2\s+vEffectUv\s*;""").containsMatchIn(vert))
         assertTrue(Regex("""varying\s+vec2\s+vEffectUv\s*;""").containsMatchIn(frag))
