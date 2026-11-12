@@ -7,6 +7,12 @@ import android.graphics.Bitmap
 object OsdResources {
 
     @Volatile private var cached: Pair<OsdFont, OsdAtlas>? = null
+    @Volatile private var plain: OsdAtlas? = null
+
+    /** Same glyphs without the baked outline (key labels, menu text). */
+    fun plainAtlas(context: Context): OsdAtlas = plain ?: synchronized(this) {
+        plain ?: OsdAtlas.build(get(context).first, outline = false).also { plain = it }
+    }
 
     fun get(context: Context): Pair<OsdFont, OsdAtlas> = cached ?: synchronized(this) {
         cached ?: run {

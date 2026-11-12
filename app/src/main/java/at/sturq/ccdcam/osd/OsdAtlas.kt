@@ -29,7 +29,11 @@ class OsdAtlas private constructor(
         private const val PAD = 1           // outline border around each glyph
         private const val GAP = 1           // empty texel between entries (no bleeding)
 
-        fun build(font: OsdFont, atlasWidth: Int = 256): OsdAtlas {
+        /**
+         * @param outline bake the 1 px dark border (OSD indicators on the picture). Without it
+         *   (touch-panel key labels: black text on cyan keys, as on the LCD) only fill texels exist.
+         */
+        fun build(font: OsdFont, atlasWidth: Int = 256, outline: Boolean = true): OsdAtlas {
             val entries = font.glyphs.entries.sortedBy { it.key }.map { it.key as Any to it.value } +
                 font.sprites.entries.sortedBy { it.key }.map { it.key as Any to it.value }
             // Shelf packing: all entries share the cell height.
@@ -51,7 +55,7 @@ class OsdAtlas private constructor(
                 for (gy in -PAD until g.height + PAD) for (gx in -PAD until g.width + PAD) {
                     val v = when {
                         g.on(gx, gy) -> FILL
-                        (-1..1).any { dy -> (-1..1).any { dx -> g.on(gx + dx, gy + dy) } } -> OUTLINE
+                        outline && (-1..1).any { dy -> (-1..1).any { dx -> g.on(gx + dx, gy + dy) } } -> OUTLINE
                         else -> CLEAR
                     }
                     px[(r.y + gy + PAD) * atlasWidth + (r.x + gx + PAD)] = v

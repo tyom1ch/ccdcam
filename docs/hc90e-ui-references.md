@@ -36,8 +36,8 @@ from JPEGs, so ±10 per channel).
 | 7 | Personal Menu button | bottom-right, x 0.80–0.99 | `P-MENU` | Confirmed (HC90E) |
 | – | Date / time after power-on | date bottom-left, time bottom-right (P-IT 28035) | about 5 s after switching to CAMERA (M-U p. 13) | position Confirmed (HC90); HC90E format: 24-hour clock, Y-M-D entry (M-E p. 14). Date display order on PAL units: Approximation (`D M YYYY`, from DATA CODE placeholder `[-- -- ----]`, M-E p. 54) |
 
-OSD text: white with a dark outline (P-IT). Font: **Arimo Bold** (SIL OFL 1.1, Helvetica-metric) —
-Approximation of the OSD typeface; the manual's figures use a Helvetica-style face.
+OSD text: white with a dark outline (P-IT). Font: the pixel OSD font (see "OSD font" below) —
+used for indicators, key labels, P-MENU, the MENU drum and setting screens alike.
 
 ### 2. P-MENU — Confirmed (HC90E) layout, M-E p. 34/56; colours P-IT 28036
 - 2 × 3 grid of buttons, left column: ⇑ (double chevron) button, page counter `1/3`, ⇓ button;
