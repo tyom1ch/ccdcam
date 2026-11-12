@@ -56,6 +56,10 @@ class FirmwareOsdView @JvmOverloads constructor(
         set(value) { field = value; invalidate() }
 
     // ---- live state pushed by the activity ----
+    /** NightShot body switch (indicator only; the look is in the shader). */
+    var nightShot = false
+        set(value) { field = value; invalidate() }
+
     var recording = false
         set(value) { field = value; invalidate() }
 
@@ -292,6 +296,7 @@ class FirmwareOsdView @JvmOverloads constructor(
             cassetteIconOn = (showRemaining || warn) && iconBlinkOn,
             dateTimeMs = dateTime,
             message = if (!forVideo && now < messageUntil) message else null,
+            nightShot = nightShot,
         )
     }
 

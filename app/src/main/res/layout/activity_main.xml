@@ -152,6 +152,37 @@
                 android:text="WIDE 16:9"
                 tools:ignore="HardcodedText" />
 
+            <!-- NIGHTSHOT switch (visual emulation) and LIGHT (phone torch): body controls. -->
+            <TextView
+                android:id="@+id/nightShotBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="4dp"
+                android:fontFamily="monospace"
+                android:textStyle="bold"
+                android:textSize="11sp"
+                android:textColor="@color/hud_dim"
+                android:letterSpacing="0.08"
+                android:background="?attr/selectableItemBackground"
+                android:text="NIGHTSHOT"
+                tools:ignore="HardcodedText" />
+
+            <TextView
+                android:id="@+id/lightBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="4dp"
+                android:fontFamily="monospace"
+                android:textStyle="bold"
+                android:textSize="11sp"
+                android:textColor="@color/hud_dim"
+                android:letterSpacing="0.08"
+                android:background="?attr/selectableItemBackground"
+                android:text="LIGHT"
+                tools:ignore="HardcodedText" />
+
             <!-- Delivered frame rate (measured), e.g. "PAL 25p" or "30p · 25p n/a". -->
             <TextView
                 android:id="@+id/fpsTxt"

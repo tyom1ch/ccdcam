@@ -117,4 +117,14 @@ class OsdSceneLayoutTest {
         // second vertex: LCD top-right -> atlas u = 32/256
         assertEquals(1f, v[8], 1e-6f); assertEquals(32f / 256f, v[10], 1e-6f)
     }
+
+    @Test
+    fun nightShotIndicatorOnlyWhenOn() {
+        fun has(on: Boolean, video: Boolean) = OsdScene.build(state().copy(nightShot = on), video)
+            .any { it is OsdItem.Sprite && it.name == "nightshot" }
+        assertTrue(has(true, false))
+        assertTrue(has(true, true))     // also burned into the recording
+        assertFalse(has(false, false))
+        assertTrue("nightshot" in font.sprites)
+    }
 }

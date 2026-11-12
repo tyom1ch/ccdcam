@@ -26,6 +26,8 @@ data class OsdIndicators(
     val dateTimeMs: Long?,
     /** Centered warning text, or null. */
     val message: String?,
+    /** NightShot switch on: indicator under the battery. */
+    val nightShot: Boolean = false,
 ) {
     enum class Transport { STOP, PLAY, PAUSE, REW, FF }
 }
@@ -116,6 +118,9 @@ object OsdScene {
                 out += OsdItem.Text(OsdFormat.minutes(s.remainingMin), RIGHT - 17 * PX, ROW2, OsdItem.Align.RIGHT, WHITE)
             }
         }
+
+        // NightShot indicator (position: left, under the battery — ITmedia 28035)
+        if (s.nightShot) out += OsdItem.Sprite("nightshot", LEFT, ROW2, OsdItem.Align.LEFT, WHITE)
 
         // Date / time row
         s.dateTimeMs?.let { t ->

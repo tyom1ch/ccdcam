@@ -88,6 +88,9 @@ class CcdSurfaceProcessor(
 
     @Volatile var framing: Framing = Framing(null, 16f / 9f, 0)
 
+    /** NightShot look (body switch). Visual only. */
+    @Volatile var nightShot: Boolean = false
+
     // EGL state — initialized lazily on processor thread
     private var eglDisplay: EGLDisplay = EGL14.EGL_NO_DISPLAY
     private var eglContext: EGLContext = EGL14.EGL_NO_CONTEXT
@@ -101,6 +104,7 @@ class CcdSurfaceProcessor(
     private var uTexMatrixLoc = -1
     private var uResLoc = -1
     private var uTimeLoc = -1
+    private var uNightShotLoc = -1
     private var uTextureLoc = -1
     private lateinit var lookUniforms: LookUniforms
     private var uBufferToEffectLoc = -1
@@ -255,6 +259,7 @@ class CcdSurfaceProcessor(
         GLES20.glUniformMatrix4fv(uTexMatrixLoc, 1, false, combined, 0)
         GLES20.glUniform2f(uResLoc, w.toFloat(), h.toFloat())
         GLES20.glUniform1f(uTimeLoc, (System.nanoTime() - startNs) / 1e9f)
+        GLES20.glUniform1f(uNightShotLoc, if (nightShot) 1f else 0f)
         lookUniforms.apply(look)
         updateGeometry(entry, fr)
         GLES20.glUniformMatrix3fv(uBufferToEffectLoc, 1, false, entry.bufferToEffect, 0)
@@ -340,6 +345,7 @@ class CcdSurfaceProcessor(
         uTexMatrixLoc = GLES20.glGetUniformLocation(program, "uTexMatrix")
         uResLoc = GLES20.glGetUniformLocation(program, "uResolution")
         uTimeLoc = GLES20.glGetUniformLocation(program, "uTime")
+        uNightShotLoc = GLES20.glGetUniformLocation(program, "uNightShot")
         uTextureLoc = GLES20.glGetUniformLocation(program, "sTexture")
         lookUniforms = LookUniforms(program)
         uBufferToEffectLoc = GLES20.glGetUniformLocation(program, "uBufferToEffect")
