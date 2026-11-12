@@ -28,6 +28,7 @@ import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
 import at.sturq.ccdcam.firmware.FirmwareSettings
 import at.sturq.ccdcam.audio.ClipAudioProcessor
+import at.sturq.ccdcam.audio.SfxMixer
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.core.UseCaseGroup
@@ -498,7 +499,9 @@ class MainActivity : AppCompatActivity() {
         if (uri == android.net.Uri.EMPTY) return
         val s = hc.navigator.settings
         val profile = s.audioProfile()
-        if (profile.bypass) {
+        val events = if (s.burnSound == FirmwareSettings.ON) hc.takeRecordingSfx() else emptyList()
+        val tape = s.tapeNoise == FirmwareSettings.ON
+        if (profile.bypass && events.isEmpty() && !tape) {
             applyClipRotation(uri, cwDegrees)
             return
         }
@@ -506,7 +509,12 @@ class MainActivity : AppCompatActivity() {
         ioScope.launch {
             val tmp = java.io.File(cacheDir, "hc_audio_${System.nanoTime()}.mp4")
             try {
-                val ok = ClipAudioProcessor.process(this@MainActivity, uri, tmp, profile, cwDegrees)
+                // Effects are 48 kHz PCM, the Recorder's audio rate: offsets in ms * 48 frames.
+                val mixer = SfxMixer(
+                    if (tape) hc.tapeLoopPcm() else null, SfxMixer.LOOP_GAIN,
+                    events.map { (b, ms) -> SfxMixer.Event(hc.soundPcm(b), ms * 48) }, SfxMixer.EVENT_GAIN,
+                )
+                val ok = ClipAudioProcessor.process(this@MainActivity, uri, tmp, profile, cwDegrees, mixer)
                 Log.i(TAG, "clip audio $profile ok=$ok keep=$keep")
                 when {
                     !ok -> applyClipRotation(uri, cwDegrees)

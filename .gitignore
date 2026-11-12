@@ -16,3 +16,6 @@ release/
 __pycache__/
 *.pyc
 reference/
+
+# UI sound source renders (imported by tools/import_ui_sounds.py into res/raw)
+/*.wav

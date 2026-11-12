@@ -61,7 +61,7 @@ class Hc90eController(
     }
 
     val navigator = FirmwareNavigator(store.firmware, Lamp.TAPE)
-    private val beeps = BeepPlayer()
+    private val beeps = BeepPlayer(context)
     private val main = Handler(Looper.getMainLooper())
     private val io = Executors.newSingleThreadExecutor { r -> Thread(r, "HC90eTape") }
 
@@ -86,6 +86,7 @@ class Hc90eController(
         powerOn()
         updateLampLabels()
         main.post(videoOsdTicker)
+        playBeep(Beep.POWER_ON)
     }
 
     // ================= burned-in OSD =================
@@ -197,10 +198,12 @@ class Hc90eController(
         val s = navigator.settings
         if (s.cassette != null) {
             saveSettings(s.copy(cassette = null))
+            playBeep(Beep.CASSETTE_EJECT)
             b.firmwareOsd.showMessage(MSG_INSERT_CASSETTE)
             Toast.makeText(context, "Cassette ejected. Long-press TAPE to insert a new DVM60.", Toast.LENGTH_SHORT).show()
         } else {
             saveSettings(s.copy(cassette = VirtualCassette.fresh()))
+            playBeep(Beep.CASSETTE_INSERT)
             b.firmwareOsd.showRemaining()
             Toast.makeText(context, "New DVM60 cassette inserted.", Toast.LENGTH_SHORT).show()
         }
@@ -226,6 +229,8 @@ class Hc90eController(
 
     fun onRecordingStarted() {
         if (!active) return
+        recSfx.clear()
+        recordingSince = SystemClock.uptimeMillis()
         playBeep(Beep.REC_START)
         if (navigator.settings.fader != FirmwareSettings.FADER_OFF) startFade(fadeInNow = true, thenStop = false)
         b.firmwareOsd.sceneMs = 0
@@ -247,6 +252,7 @@ class Hc90eController(
 
     fun onRecordingFinished(sceneMs: Long, saved: Boolean) {
         if (!active) return
+        recordingSince = -1L
         playBeep(Beep.REC_STOP)
         main.removeCallbacks(fadeTicker)
         fadeThenStop = false
@@ -261,9 +267,22 @@ class Hc90eController(
 
     // ================= sounds =================
 
+    /** Sounds heard during the current recording: (sound, ms after REC), for BURN SOUND. */
+    private val recSfx = ArrayList<Pair<Beep, Long>>()
+    private var recordingSince = -1L
+
     private fun playBeep(sound: Beep) {
-        if (navigator.settings.beepOn) beeps.play(sound)
+        if (sound.melody && !navigator.settings.beepOn) return
+        beeps.play(sound)
+        if (recordingSince >= 0) recSfx += sound to (SystemClock.uptimeMillis() - recordingSince)
     }
+
+    /** UI sounds of the last recording (cleared when the next one starts). */
+    fun takeRecordingSfx(): List<Pair<Beep, Long>> = recSfx.toList().also { recSfx.clear() }
+
+    fun soundPcm(beep: Beep): FloatArray = beeps.pcm(beep)
+
+    fun tapeLoopPcm(): FloatArray = beeps.tapeLoop()
 
     override fun onBeep(beep: Beep) = playBeep(beep)
 

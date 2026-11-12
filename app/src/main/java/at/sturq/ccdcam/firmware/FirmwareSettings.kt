@@ -27,6 +27,10 @@ data class FirmwareSettings(
     val audioEmu: String = AUDIO_EMU_DV,
     /** App setting: REPLACE the clip's sound, or KEEP the original and save a processed copy. */
     val origAudio: String = ORIG_AUDIO_REPLACE,
+    /** App setting: UI sounds heard while recording are also mixed into the clip. */
+    val burnSound: String = OFF,
+    /** App setting: tape-mechanism loop mixed under the recording. */
+    val tapeNoise: String = ON,
     val cassette: VirtualCassette? = VirtualCassette.fresh(),
 ) {
     val beepOn: Boolean get() = beep == BEEP_ON
@@ -54,6 +58,8 @@ data class FirmwareSettings(
         HC90eMenu.SUPER_NS -> superNs
         HC90eMenu.AUDIO_EMU -> audioEmu
         HC90eMenu.ORIG_AUDIO -> origAudio
+        HC90eMenu.BURN_SOUND -> burnSound
+        HC90eMenu.TAPE_NOISE -> tapeNoise
         else -> null
     }
 
@@ -75,6 +81,8 @@ data class FirmwareSettings(
             HC90eMenu.SUPER_NS -> copy(superNs = optionId)
             HC90eMenu.AUDIO_EMU -> copy(audioEmu = optionId)
             HC90eMenu.ORIG_AUDIO -> copy(origAudio = optionId)
+            HC90eMenu.BURN_SOUND -> copy(burnSound = optionId)
+            HC90eMenu.TAPE_NOISE -> copy(tapeNoise = optionId)
             else -> throw IllegalArgumentException("$itemId has no stored value")
         }
     }
@@ -106,6 +114,8 @@ data class FirmwareSettings(
         const val AUDIO_EMU_CLEAN = "CLEAN"
         const val ORIG_AUDIO_REPLACE = "REPLACE"
         const val ORIG_AUDIO_KEEP = "KEEP"
+        const val OFF = "OFF"
+        const val ON = "ON"
         const val FADER_BLACK = "BLACK FADER"
         const val FADER_WHITE = "WHITE FADER"
     }

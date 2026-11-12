@@ -28,7 +28,10 @@ object ClipAudioProcessor {
     private class Encoded(val data: ByteArray, val ptsUs: Long)
 
     /** Writes [src] with processed audio to [dst]. Returns false (and deletes [dst]) on failure. */
-    fun process(context: Context, src: Uri, dst: File, profile: AudioProfile, rotationCw: Int): Boolean {
+    fun process(
+        context: Context, src: Uri, dst: File, profile: AudioProfile, rotationCw: Int,
+        mixer: SfxMixer? = null,
+    ): Boolean {
         val ex = MediaExtractor()
         return try {
             ex.setDataSource(context, src, null)
@@ -42,7 +45,7 @@ object ClipAudioProcessor {
             }
             if (vFmt == null || aFmt == null) return false
             ex.selectTrack(aIdx)
-            val (encFmt, audio) = transcode(ex, aFmt, profile) ?: return false
+            val (encFmt, audio) = transcode(ex, aFmt, profile, mixer) ?: return false
             mux(context, src, dst, vIdx, vFmt, encFmt, audio, rotationCw)
             true
         } catch (t: Throwable) {
@@ -65,7 +68,9 @@ object ClipAudioProcessor {
         }
     }
 
-    private fun transcode(ex: MediaExtractor, fmt: MediaFormat, profile: AudioProfile): Pair<MediaFormat, List<Encoded>>? {
+    private fun transcode(
+        ex: MediaExtractor, fmt: MediaFormat, profile: AudioProfile, mixer: SfxMixer?,
+    ): Pair<MediaFormat, List<Encoded>>? {
         val dec = MediaCodec.createDecoderByType(fmt.getString(MediaFormat.KEY_MIME)!!)
         dec.configure(fmt, null, null, 0)
         dec.start()
@@ -113,7 +118,9 @@ object ClipAudioProcessor {
                                 chain = it
                                 enc = encoder(it.outputRate, channels)
                             }
-                            val y = c.process(FloatArray(pcm.size) { pcm[it] / 32768f })
+                            val x = FloatArray(pcm.size) { pcm[it] / 32768f }
+                            mixer?.mix(x, channels)      // tape loop + UI sounds, before the mic chain
+                            val y = c.process(x)
                             pending.addLast(ShortArray(y.size) { (y[it] * 32767f).roundToInt().coerceIn(-32768, 32767).toShort() })
                         }
                         dec.releaseOutputBuffer(o, false)
