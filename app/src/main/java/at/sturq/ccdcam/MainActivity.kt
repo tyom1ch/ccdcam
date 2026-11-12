@@ -3,8 +3,6 @@ package at.sturq.ccdcam
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ContentValues
-import android.content.Context
-import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.Bundle
@@ -35,6 +33,9 @@ import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
 import at.sturq.ccdcam.databinding.ActivityMainBinding
+import at.sturq.ccdcam.profile.CameraProfile
+import at.sturq.ccdcam.settings.AspectSetting
+import at.sturq.ccdcam.settings.SettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -54,7 +55,9 @@ class MainActivity : AppCompatActivity() {
     private enum class Mode { PHOTO, VIDEO }
 
     private lateinit var binding: ActivityMainBinding
-    private lateinit var prefs: SharedPreferences
+    private lateinit var settings: SettingsStore
+    /** Active camera profile; read once per activity instance (switching UI comes later). */
+    private lateinit var profile: CameraProfile
 
     private lateinit var ccdProcessor: CcdSurfaceProcessor
     private lateinit var ccdEffect: CcdEffect
@@ -111,7 +114,7 @@ class MainActivity : AppCompatActivity() {
         override fun run() {
             if (recording != null) {
                 val elapsed = SystemClock.elapsedRealtime() - recordStartMs
-                binding.timecode.text = formatTimecode(elapsed, fps = 30)
+                binding.timecode.text = formatTimecode(elapsed, fps = profile.timecodeFps)
                 blinkOn = !blinkOn
                 binding.recDot.visibility = if (blinkOn) View.VISIBLE else View.INVISIBLE
                 uiHandler.postDelayed(this, 500)
@@ -145,9 +148,12 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        prefs = getSharedPreferences("ccdcam", Context.MODE_PRIVATE)
-        aspectRatio = if (prefs.getString("aspect", "16:9") == "4:3")
-            AspectRatio.RATIO_4_3 else AspectRatio.RATIO_16_9
+        settings = SettingsStore(this)
+        profile = settings.profile
+        aspectRatio = when (settings.aspect) {
+            AspectSetting.RATIO_4_3 -> AspectRatio.RATIO_4_3
+            AspectSetting.RATIO_16_9 -> AspectRatio.RATIO_16_9
+        }
 
         ccdProcessor = CcdSurfaceProcessor(this)
         ccdEffect = CcdEffect(ccdProcessor)
@@ -264,10 +270,8 @@ class MainActivity : AppCompatActivity() {
         }
         aspectRatio = if (aspectRatio == AspectRatio.RATIO_16_9)
             AspectRatio.RATIO_4_3 else AspectRatio.RATIO_16_9
-        prefs.edit().putString(
-            "aspect",
-            if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
-        ).apply()
+        settings.aspect = if (aspectRatio == AspectRatio.RATIO_4_3)
+            AspectSetting.RATIO_4_3 else AspectSetting.RATIO_16_9
         applyAspectLabel()
         bindCamera()
     }
@@ -276,7 +280,7 @@ class MainActivity : AppCompatActivity() {
         // Horizontal anamorphic squish in the shader (uStretch on X axis) — applies to both
         // preview and video output uniformly, so videos get the CCD/Hi8 character that comes
         // from a tighter horizontal sample range scaled to fill output width.
-        ccdProcessor.stretch = 0.78f
+        ccdProcessor.stretch = profile.stretch
         binding.aspectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
     }
 
