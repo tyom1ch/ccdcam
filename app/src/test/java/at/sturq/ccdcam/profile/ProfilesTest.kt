@@ -5,73 +5,56 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.io.File
 
 class ProfilesTest {
 
-    /** `const <type> NAME = value;` from ccd.frag, keyed by NAME. */
-    private val fragConsts: Map<String, String> by lazy {
-        // Gradle runs unit tests with the module directory (app/) as working directory.
-        val frag = listOf(
-            File("src/main/assets/shaders/ccd.frag"),
-            File("app/src/main/assets/shaders/ccd.frag"),
-        ).first { it.exists() }
-        Regex("""const\s+\w+\s+(\w+)\s*=\s*([^;]+);""")
-            .findAll(frag.readText())
-            .associate { it.groupValues[1] to it.groupValues[2].trim() }
-    }
-
-    private fun float(name: String): Float =
-        fragConsts[name]?.toFloat() ?: error("$name not found in ccd.frag")
-
-    private fun vec3(name: String): Triple<Float, Float, Float> {
-        val raw = fragConsts[name] ?: error("$name not found in ccd.frag")
-        val parts = raw.removePrefix("vec3(").removeSuffix(")").split(",").map { it.trim().toFloat() }
-        return Triple(parts[0], parts[1], parts[2])
-    }
-
+    /**
+     * Golden values: the `const` block of ccd.frag as it was before stage 2 turned it into
+     * uniforms (upstream commit 735bad7). CCDCAM_DEFAULT must keep rendering exactly this.
+     */
     @Test
-    fun ccdcamDefaultMatchesShaderConstantsExactly() {
+    fun ccdcamDefaultMatchesOriginalShaderConstants() {
         val p = Profiles.CCDCAM_DEFAULT.shader
-        assertEquals(float("CCD_X"), p.ccdX)
-        assertEquals(float("CCD_Y"), p.ccdY)
-        assertEquals(float("LINES"), p.lines)
-        assertEquals(float("SMEAR_THRESHOLD"), p.smearThreshold)
-        assertEquals(float("SMEAR_STRENGTH"), p.smearStrength)
-        assertEquals(float("SMEAR_RANGE"), p.smearRange)
-        assertEquals(float("FLARE_THRESHOLD"), p.flareThreshold)
-        assertEquals(float("FLARE_RANGE"), p.flareRange)
-        assertEquals(float("FLARE_STRENGTH"), p.flareStrength)
-        assertEquals(float("CHROMA_NOISE_AMP"), p.chromaNoiseAmp)
-        assertEquals(float("LUMA_GRAIN_AMP"), p.lumaGrainAmp)
-        assertEquals(float("BLACK_LIFT"), p.blackLift)
-        assertEquals(vec3("WARM_GRADE"), p.warmGrade)
-        assertEquals(float("SATURATION"), p.saturation)
-        assertEquals(float("CONTRAST"), p.contrast)
-        assertEquals(float("SCANLINE_AMP"), p.scanlineAmp)
-        assertEquals(float("VIGNETTE_STRENGTH"), p.vignetteStrength)
-        assertEquals(float("CHROMA_SHIFT"), p.chromaShift)
+        assertEquals(720.0f, p.ccdX)
+        assertEquals(720.0f, p.ccdY)
+        assertEquals(480.0f, p.lines)
+        assertEquals(0.86f, p.smearThreshold)
+        assertEquals(0.0f, p.smearStrength)
+        assertEquals(0.38f, p.smearRange)
+        assertEquals(0.90f, p.flareThreshold)
+        assertEquals(0.14f, p.flareRange)
+        assertEquals(0.30f, p.flareStrength)
+        assertEquals(0.02f, p.chromaNoiseAmp)
+        assertEquals(0.05f, p.lumaGrainAmp)
+        assertEquals(0.01f, p.blackLift)
+        assertEquals(Triple(1.05f, 1.01f, 0.98f), p.warmGrade)
+        assertEquals(0.98f, p.saturation)
+        assertEquals(1.15f, p.contrast)
+        assertEquals(0.025f, p.scanlineAmp)
+        assertEquals(0.35f, p.vignetteStrength)
+        assertEquals(0.0003f, p.chromaShift)
     }
 
     @Test
-    fun loopSampleCountsStayConst() {
-        // Not part of ShaderParams on purpose; guard that they did not change silently.
-        assertEquals("8", fragConsts["SMEAR_SAMPLES"])
-        assertEquals("5", fragConsts["FLARE_SAMPLES"])
-    }
-
-    @Test
-    fun ccdcamDefaultKeepsLegacyStretchAndTimecode() {
+    fun ccdcamDefaultKeepsLegacyBehaviour() {
+        val p = Profiles.CCDCAM_DEFAULT
+        // Effects in camera texture space, exactly like the original shader.
+        assertEquals(EffectSpace.TEXTURE, p.effectSpace)
+        assertEquals(0f, p.effectSpace.uniformValue)
         // MainActivity.applyAspectLabel() always set stretch = 0.78f; timecode was 30 fps.
-        assertEquals(0.78f, Profiles.CCDCAM_DEFAULT.stretch)
-        assertEquals(30, Profiles.CCDCAM_DEFAULT.timecodeFps)
+        assertEquals(0.78f, p.stretch)
+        assertEquals(30, p.timecodeFps)
+        // Original layout text of the bottom-left HUD label.
+        assertEquals("CCD CAM", p.hudLabel)
     }
 
     @Test
-    fun hc90eIsASeparateProfile() {
+    fun hc90eIsASeparateProfileInOutputSpace() {
         assertNotEquals(Profiles.CCDCAM_DEFAULT.id, Profiles.HC90E_PAL.id)
         assertTrue(Profiles.ALL.contains(Profiles.HC90E_PAL))
         assertEquals(Profiles.ALL.size, Profiles.ALL.map { it.id }.toSet().size)
+        assertEquals(EffectSpace.OUTPUT, Profiles.HC90E_PAL.effectSpace)
+        assertEquals(1f, Profiles.HC90E_PAL.effectSpace.uniformValue)
     }
 
     @Test

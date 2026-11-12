@@ -18,7 +18,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-# ---------- shader constants (kept in sync with ccd.frag) ----------
+# ---------- look parameters (kept in sync with Profiles.CCDCAM_DEFAULT / ccd.frag) ----------
 CCD_X = 720.0
 CCD_Y = 720.0
 LINES = 480.0
@@ -38,6 +38,7 @@ DESAT = 0.98
 CONTRAST = 1.15
 SCANLINE_AMP = 0.025
 VIGNETTE_STRENGTH = 0.35
+CHROMA_SHIFT = 0.0003
 
 LUMA_W = np.array([0.299, 0.587, 0.114], dtype=np.float32)
 
@@ -55,6 +56,19 @@ def downsample(img: np.ndarray, lines: float) -> np.ndarray:
     )
     back = small.resize((w, h), Image.NEAREST)
     return np.asarray(back, dtype=np.float32) / 255.0
+
+
+def chroma_shift(img: np.ndarray) -> np.ndarray:
+    """R sampled CHROMA_SHIFT to the right, B to the left (ccd.frag), edge-clamped."""
+    h, w, _ = img.shape
+    s = int(round(CHROMA_SHIFT * w))
+    if s == 0:
+        return img
+    out = img.copy()
+    idx = np.arange(w)
+    out[..., 0] = img[:, np.clip(idx + s, 0, w - 1), 0]
+    out[..., 2] = img[:, np.clip(idx - s, 0, w - 1), 2]
+    return out
 
 
 def vertical_smear(img: np.ndarray) -> np.ndarray:
@@ -153,6 +167,7 @@ def process(img: np.ndarray, seed: int = 0) -> np.ndarray:
     rng = np.random.default_rng(seed)
     x = img.astype(np.float32) / 255.0
     x = downsample(x, LINES)
+    x = chroma_shift(x)
     x = vertical_smear(x)
     x = horizontal_flare(x)
     x = chroma_noise(x, rng)

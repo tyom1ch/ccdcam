@@ -5,8 +5,7 @@ package at.sturq.ccdcam.profile
  * (camelCase of the SCREAMING_CASE name). Loop sample counts (SMEAR_SAMPLES, FLARE_SAMPLES)
  * are deliberately not here: GLSL ES 2.0 needs constant loop bounds, so they stay `const`.
  *
- * Stage 1: values are data only; the shader still uses its own constants. Stage 2 turns
- * them into uniforms fed from the active profile.
+ * Fed to the shader as uniforms every frame by LookUniforms (CcdSurfaceProcessor).
  */
 data class ShaderParams(
     val ccdX: Float,
@@ -29,16 +28,28 @@ data class ShaderParams(
     val chromaShift: Float,
 )
 
+/** Coordinate space the look is computed in (`uEffectSpace` in ccd.frag). */
+enum class EffectSpace(val uniformValue: Float) {
+    /** Camera texture space (after the transform matrix). The original CCDCam behaviour. */
+    TEXTURE(0f),
+
+    /** Output-surface space: grid, scanlines, smear and flare follow the output frame. */
+    OUTPUT(1f),
+}
+
 /**
  * A camera profile: everything that makes one emulated camera differ from another.
  *
+ * @param hudLabel text of the bottom-left HUD label
  * @param stretch horizontal sample range fed to `uStretch` in passthrough.vert
  * @param timecodeFps frame field of the HUD timecode runs 0 until timecodeFps - 1
  */
 data class CameraProfile(
     val id: String,
     val displayName: String,
+    val hudLabel: String,
     val shader: ShaderParams,
+    val effectSpace: EffectSpace,
     val stretch: Float,
     val timecodeFps: Int,
 )

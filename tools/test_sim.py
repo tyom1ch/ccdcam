@@ -60,7 +60,7 @@ def test_no_smear_on_dim_text_pattern():
 def test_horizontal_flare_only_on_extreme():
     """The horizontal flare must NOT trigger on luma ~0.85 (text-bright but not blown)."""
     inp = np.full((120, 160, 3), 30, dtype=np.uint8)
-    inp[58:62, 78:82] = 215  # bright but below FLARE_THRESHOLD=0.95
+    inp[58:62, 78:82] = 215  # bright but below FLARE_THRESHOLD=0.90
     x = inp.astype(np.float32) / 255.0
     flared = horizontal_flare(x)
     diff = np.abs(flared - x).max()

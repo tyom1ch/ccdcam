@@ -175,6 +175,7 @@
         app:layout_constraintEnd_toEndOf="@id/previewView">
 
         <TextView
+            android:id="@+id/profileTxt"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:fontFamily="monospace"

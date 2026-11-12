@@ -17,6 +17,8 @@ import android.view.Surface
 import androidx.camera.core.SurfaceOutput
 import androidx.camera.core.SurfaceProcessor
 import androidx.camera.core.SurfaceRequest
+import at.sturq.ccdcam.profile.CameraProfile
+import at.sturq.ccdcam.profile.Profiles
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.FloatBuffer
@@ -43,6 +45,9 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
 
     @Volatile var stretch: Float = 0.72f
 
+    /** Look parameters; read once per camera frame so every output gets the same values. */
+    @Volatile var profile: CameraProfile = Profiles.CCDCAM_DEFAULT
+
     // EGL state — initialized lazily on processor thread
     private var eglDisplay: EGLDisplay = EGL14.EGL_NO_DISPLAY
     private var eglContext: EGLContext = EGL14.EGL_NO_CONTEXT
@@ -59,6 +64,7 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
     private var uTextureLoc = -1
     private var uStretchLoc = -1
     private var uRotationLoc = -1
+    private lateinit var lookUniforms: LookUniforms
     private lateinit var vertexBuf: FloatBuffer
     private lateinit var texBuf: FloatBuffer
     private val texMatrix = FloatArray(16)
@@ -138,9 +144,10 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
             return
         }
         val pts = st.timestamp
+        val frameProfile = profile
         for ((output, entry) in outputs) {
             if (!EGL14.eglMakeCurrent(eglDisplay, entry.eglSurface, entry.eglSurface, eglContext)) continue
-            drawOnce(entry.width, entry.height, output)
+            drawOnce(entry.width, entry.height, output, frameProfile)
             EGLExt.eglPresentationTimeANDROID(eglDisplay, entry.eglSurface, pts)
             EGL14.eglSwapBuffers(eglDisplay, entry.eglSurface)
         }
@@ -148,7 +155,7 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
 
     private val combined = FloatArray(16)
 
-    private fun drawOnce(w: Int, h: Int, output: SurfaceOutput) {
+    private fun drawOnce(w: Int, h: Int, output: SurfaceOutput, look: CameraProfile) {
         // updateTransformMatrix(updated, original): combines camera tex transform with the
         // per-output rotation/mirror CameraX wants applied, so each output gets its own correct
         // matrix without any custom rotation math on our side.
@@ -167,6 +174,7 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
         GLES20.glUniform1f(uTimeLoc, (System.nanoTime() - startNs) / 1e9f)
         GLES20.glUniform1f(uStretchLoc, stretch)
         GLES20.glUniform1f(uRotationLoc, 0f)
+        lookUniforms.apply(look)
 
         vertexBuf.position(0)
         GLES20.glEnableVertexAttribArray(aPosLoc)
@@ -229,6 +237,7 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
         uTextureLoc = GLES20.glGetUniformLocation(program, "sTexture")
         uStretchLoc = GLES20.glGetUniformLocation(program, "uStretch")
         uRotationLoc = GLES20.glGetUniformLocation(program, "uRotationRad")
+        lookUniforms = LookUniforms(program)
 
         val vertices = floatArrayOf(-1f, -1f,  1f, -1f,  -1f,  1f,  1f,  1f)
         val texCoords = floatArrayOf( 0f,  0f,  1f,  0f,   0f,  1f,  1f,  1f)
