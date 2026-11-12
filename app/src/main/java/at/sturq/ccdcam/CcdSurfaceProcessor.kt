@@ -166,10 +166,28 @@ class CcdSurfaceProcessor(
                     output.close()
                 }
             }
+            // One output per target: on a rebind (e.g. camera flip) CameraX hands out the same
+            // PreviewView Surface again before the old output's close event arrives. Release the
+            // old EGL surface first, or EGL refuses a second window surface on that Surface.
+            val stale = outputs.keys.filter { it.targets and output.targets != 0 }
+            if (stale.isNotEmpty()) {
+                EGL14.eglMakeCurrent(eglDisplay, pbufferSurface, pbufferSurface, eglContext)
+                for (old in stale) {
+                    outputs.remove(old)?.let { e ->
+                        try { EGL14.eglDestroySurface(eglDisplay, e.eglSurface) } catch (_: Throwable) {}
+                    }
+                    old.close()
+                }
+            }
             val attribs = intArrayOf(EGL14.EGL_NONE)
-            val eglSurf = EGL14.eglCreateWindowSurface(eglDisplay, eglConfig, outSurface, attribs, 0)
+            var eglSurf = EGL14.eglCreateWindowSurface(eglDisplay, eglConfig, outSurface, attribs, 0)
             if (eglSurf == EGL14.EGL_NO_SURFACE) {
-                Log.e(TAG, "eglCreateWindowSurface failed for output ${output.size}")
+                Log.w(TAG, "eglCreateWindowSurface failed (0x${Integer.toHexString(EGL14.eglGetError())}), retrying once")
+                EGL14.eglMakeCurrent(eglDisplay, pbufferSurface, pbufferSurface, eglContext)
+                eglSurf = EGL14.eglCreateWindowSurface(eglDisplay, eglConfig, outSurface, attribs, 0)
+            }
+            if (eglSurf == EGL14.EGL_NO_SURFACE) {
+                Log.e(TAG, "eglCreateWindowSurface failed for output ${output.size} (0x${Integer.toHexString(EGL14.eglGetError())})")
                 output.close()
                 return@post
             }
