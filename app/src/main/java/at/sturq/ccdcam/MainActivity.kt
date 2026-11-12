@@ -111,7 +111,7 @@ class MainActivity : AppCompatActivity() {
         override fun run() {
             if (recording != null) {
                 val elapsed = SystemClock.elapsedRealtime() - recordStartMs
-                binding.timecode.text = formatTimecode(elapsed)
+                binding.timecode.text = formatTimecode(elapsed, fps = 30)
                 blinkOn = !blinkOn
                 binding.recDot.visibility = if (blinkOn) View.VISIBLE else View.INVISIBLE
                 uiHandler.postDelayed(this, 500)
@@ -130,8 +130,13 @@ class MainActivity : AppCompatActivity() {
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { result ->
-        if (result.values.all { it }) bindCamera()
+        // Camera + mic gate the camera; storage (API <= 28 only) gates saving, so a denial
+        // there must not block the preview.
+        if (hasPerms()) bindCamera()
         else Toast.makeText(this, R.string.perm_denied, Toast.LENGTH_LONG).show()
+        if (result[Manifest.permission.WRITE_EXTERNAL_STORAGE] == false) {
+            Toast.makeText(this, R.string.perm_storage_denied, Toast.LENGTH_LONG).show()
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -184,7 +189,8 @@ class MainActivity : AppCompatActivity() {
         }
 
         setMode(Mode.VIDEO)
-        if (!hasPerms()) permLauncher.launch(REQUIRED_PERMS) else bindCamera()
+        val missing = missingPerms()
+        if (missing.isNotEmpty()) permLauncher.launch(missing) else bindCamera()
     }
 
     private fun setMode(m: Mode) {
@@ -201,8 +207,18 @@ class MainActivity : AppCompatActivity() {
         binding.timecode.text = if (m == Mode.PHOTO) "          " else "00:00:00:00"
     }
 
-    private fun hasPerms() = REQUIRED_PERMS.all {
-        ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+    private fun isGranted(perm: String) =
+        ContextCompat.checkSelfPermission(this, perm) == PackageManager.PERMISSION_GRANTED
+
+    /** Camera + mic: required to bind the camera at all. */
+    private fun hasPerms() = REQUIRED_PERMS.all(this::isGranted)
+
+    /** Everything we ask for, including legacy storage on API <= 28 (MediaStore writes need it there). */
+    private fun missingPerms(): Array<String> {
+        val wanted = if (android.os.Build.VERSION.SDK_INT <= android.os.Build.VERSION_CODES.P)
+            REQUIRED_PERMS + Manifest.permission.WRITE_EXTERNAL_STORAGE
+        else REQUIRED_PERMS
+        return wanted.filterNot(this::isGranted).toTypedArray()
     }
 
     private fun bindCamera() {
@@ -372,15 +388,6 @@ class MainActivity : AppCompatActivity() {
     private fun stopRecording() {
         recording?.stop()
         recording = null
-    }
-
-    private fun formatTimecode(ms: Long): String {
-        val totalSec = ms / 1000
-        val frames = ((ms % 1000) * 30 / 1000).toInt()
-        return String.format(
-            Locale.US, "%02d:%02d:%02d:%02d",
-            totalSec / 3600, (totalSec % 3600) / 60, totalSec % 60, frames
-        )
     }
 
     override fun onResume() {
