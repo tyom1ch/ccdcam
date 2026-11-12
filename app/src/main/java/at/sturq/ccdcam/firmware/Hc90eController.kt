@@ -49,6 +49,13 @@ class Hc90eController(
         fun setNightShot(on: Boolean)
         /** Phone torch ("LIGHT"). Returns false if the camera has no flash unit. */
         fun setLight(on: Boolean): Boolean
+        /** Exposure + white balance from the firmware settings (and NightShot). */
+        fun applyCameraSettings()
+        /** SPOT FOCUS / SPOT METER at preview-view coordinates; [auto] = back to automatic. */
+        fun spot(focus: Boolean, viewX: Float, viewY: Float)
+        fun spotAuto()
+        /** FADER on both processors. */
+        fun setFade(amount: Float, white: Boolean)
     }
 
     val navigator = FirmwareNavigator(store.firmware, Lamp.TAPE)
@@ -173,6 +180,7 @@ class Hc90eController(
     /** After a camera rebind the torch is off; re-apply both switches. */
     fun reapplyBodySwitches() {
         host.setNightShot(nightShotOn)
+        host.applyCameraSettings()
         if (lightOn && !host.setLight(true)) lightOn = false
         updateBodyLabels()
     }
@@ -217,6 +225,7 @@ class Hc90eController(
     fun onRecordingStarted() {
         if (!active) return
         playBeep(Beep.REC_START)
+        if (navigator.settings.fader != FirmwareSettings.FADER_OFF) startFade(fadeInNow = true, thenStop = false)
         b.firmwareOsd.sceneMs = 0
         b.firmwareOsd.recording = true
         refreshVideoOsd()   // REC from the first frames, not after the next tick
@@ -237,6 +246,9 @@ class Hc90eController(
     fun onRecordingFinished(sceneMs: Long, saved: Boolean) {
         if (!active) return
         playBeep(Beep.REC_STOP)
+        main.removeCallbacks(fadeTicker)
+        fadeThenStop = false
+        host.setFade(0f, false)
         b.firmwareOsd.recording = false
         b.firmwareOsd.sceneMs = 0
         refreshVideoOsd()
@@ -253,12 +265,63 @@ class Hc90eController(
 
     override fun onBeep(beep: Beep) = playBeep(beep)
 
+    override fun onSpot(itemId: String, viewX: Float, viewY: Float) =
+        host.spot(itemId == HC90eMenu.SPOT_FOCUS, viewX, viewY)
+
+    override fun onSpotAuto(itemId: String) = host.spotAuto()
+
+    // ================= FADER =================
+
+    private var fadeStart = 0L
+    private var fadeIn = true
+    private var fadeWhite = false
+    private var fadeThenStop = false
+
+    private val fadeTicker = object : Runnable {
+        override fun run() {
+            val elapsed = SystemClock.uptimeMillis() - fadeStart
+            host.setFade(Fader.amount(elapsed, fadeIn), fadeWhite)
+            if (!Fader.isDone(elapsed)) {
+                main.postDelayed(this, 30)
+            } else if (fadeThenStop) {
+                fadeThenStop = false
+                // One-shot, like the camcorder: the fader is cleared after fading out.
+                saveSettings(navigator.settings.copy(fader = FirmwareSettings.FADER_OFF))
+                host.requestStopRecording()
+            }
+        }
+    }
+
+    private fun startFade(fadeInNow: Boolean, thenStop: Boolean) {
+        fadeWhite = navigator.settings.fader == FirmwareSettings.FADER_WHITE
+        fadeIn = fadeInNow
+        fadeThenStop = thenStop
+        fadeStart = SystemClock.uptimeMillis()
+        main.removeCallbacks(fadeTicker)
+        main.post(fadeTicker)
+    }
+
+    /**
+     * STOP pressed while recording. Returns true if the controller takes over (fade-out
+     * first, then it stops the recording itself).
+     */
+    fun onStopRequested(): Boolean {
+        if (fadeThenStop) return true                       // already fading out
+        if (navigator.settings.fader == FirmwareSettings.FADER_OFF) return false
+        startFade(fadeInNow = false, thenStop = true)
+        return true
+    }
+
     // ================= navigation effects =================
 
     override fun onNavEffect(effect: NavEffect) {
         when (effect) {
             NavEffect.None -> Unit
-            is NavEffect.SettingsChanged -> { saveSettings(effect.settings); refreshVideoOsd() }
+            is NavEffect.SettingsChanged -> {
+                saveSettings(effect.settings)
+                host.applyCameraSettings()
+                refreshVideoOsd()
+            }
             NavEffect.EndSearch -> endSearch()
         }
         b.firmwareOsd.invalidate()

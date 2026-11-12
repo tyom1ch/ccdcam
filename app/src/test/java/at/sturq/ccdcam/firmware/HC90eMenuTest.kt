@@ -58,7 +58,7 @@ class HC90eMenuTest {
 
     @Test
     fun emulatedValueItemsHaveOptions() {
-        HC90eMenu.categories.flatMap { it.items }.filter { it.emulated && it.id != HC90eMenu.END_SEARCH }
+        HC90eMenu.categories.flatMap { it.items }.filter { it.emulated && it.id !in HC90eMenu.ACTION_ITEMS }
             .forEach { assertTrue("${it.id} options", it.options.size >= 2) }
     }
 
@@ -94,6 +94,9 @@ class HC90eMenuTest {
         assertTrue(HC90eMenu.pMenuEntryAvailable(HC90eMenu.P_MENU, Lamp.TAPE))
         assertFalse(HC90eMenu.pMenuEntryAvailable(HC90eMenu.P_MENU_SET_UP, Lamp.TAPE))
         assertFalse(HC90eMenu.pMenuEntryAvailable("TELE MACRO", Lamp.TAPE))         // not emulated
+        // stage 10: first P-MENU page comes alive
+        for (e in listOf("EXPOSURE", "SPOT FOCUS", "FADER")) assertTrue(e, HC90eMenu.pMenuEntryAvailable(e, Lamp.TAPE))
+        assertFalse(HC90eMenu.pMenuEntryAvailable("FADER", Lamp.MEMORY))
         assertTrue(HC90eMenu.pMenuEntryAvailable(HC90eMenu.REC_MODE, Lamp.TAPE))
         assertFalse(HC90eMenu.pMenuEntryAvailable(HC90eMenu.DATA_CODE, Lamp.TAPE))  // playback only
         assertTrue(HC90eMenu.pMenuEntryAvailable(HC90eMenu.DATA_CODE, Lamp.PLAY_EDIT))

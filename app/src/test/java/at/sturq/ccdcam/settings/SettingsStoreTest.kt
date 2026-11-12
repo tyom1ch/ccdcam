@@ -50,6 +50,7 @@ class SettingsStoreTest {
             dataCode = FirmwareSettings.DATA_CODE_DATE_TIME, remaining = FirmwareSettings.REMAINING_ON,
             beep = FirmwareSettings.BEEP_OFF, menuRotate = FirmwareSettings.MENU_ROTATE_OPPOSITE,
             burnOsd = FirmwareSettings.BURN_OSD_ON, cassette = tape,
+            exposure = "-1", whiteBal = FirmwareSettings.WB_INDOOR, fader = FirmwareSettings.FADER_BLACK,
         )
         store.firmware = s
         assertEquals(s, SettingsStore(prefs).firmware)

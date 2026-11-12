@@ -48,6 +48,10 @@ class FirmwareOsdView @JvmOverloads constructor(
         fun onNavEffect(effect: NavEffect)
         fun onPlaybackCommand(command: PlaybackCommand)
         fun onBeep(beep: Beep)
+        /** SPOT screen: subject touched at preview-view coordinates. */
+        fun onSpot(itemId: String, viewX: Float, viewY: Float)
+        /** SPOT screen: [AUTO] — back to automatic focus / metering. */
+        fun onSpotAuto(itemId: String)
     }
 
     var listener: Listener? = null
@@ -191,6 +195,7 @@ class FirmwareOsdView @JvmOverloads constructor(
             is Screen.MenuCategories -> drawDrum(canvas, nav, categoryLevel = true, s.index, -1)
             is Screen.MenuItems -> drawDrum(canvas, nav, categoryLevel = false, s.index, s.category)
             is Screen.Setting -> drawSetting(canvas, nav, s)
+            is Screen.Spot -> drawSpot(canvas, nav, s)
         }
         if (message != null && now >= messageUntil) message = null
         canvas.restore()
@@ -297,6 +302,8 @@ class FirmwareOsdView @JvmOverloads constructor(
             dateTimeMs = dateTime,
             message = if (!forVideo && now < messageUntil) message else null,
             nightShot = nightShot,
+            faderArmed = !forVideo && nav.lamp == Lamp.TAPE && !recording &&
+                s.fader != FirmwareSettings.FADER_OFF,
             blinkOn = (now / 500) % 2 == 0L,
         )
     }
@@ -471,8 +478,12 @@ class FirmwareOsdView @JvmOverloads constructor(
         plainText(c, "${item.label}: $sel", title.left + 0.02f * lcd.width, title.bottom - title.height * 0.24f, t * 0.95f, Color.WHITE)
 
         val opts = item.options
-        val w = if (opts.size <= 2) 0.170f else 0.215f
-        val gap = 0.045f
+        val gap = if (opts.size > 3) 0.025f else 0.045f
+        val w = when {
+            opts.size <= 2 -> 0.170f
+            opts.size == 3 -> 0.215f
+            else -> minOf(0.215f, (0.93f - gap * (opts.size - 1)) / opts.size)
+        }
         val total = opts.size * w + (opts.size - 1) * gap
         var x = 0.5f - total / 2f
         for (o in opts) {
@@ -486,6 +497,30 @@ class FirmwareOsdView @JvmOverloads constructor(
         } else {
             button(c, b(LcdLayout.MENU_OK), Style.CYAN, icon = ::iconReturn) { nav.back() }
         }
+    }
+
+    // ================= SPOT FOCUS / SPOT METER =================
+
+    /** Last touched subject position (virtual LCD frame px), drawn as the spot frame. */
+    private var spotX = Float.NaN
+    private var spotY = Float.NaN
+
+    /** ITmedia 28038: a frame on the subject, [AUTO] bottom-left, [END] bottom-right. */
+    private fun drawSpot(c: Canvas, nav: FirmwareNavigator, s: Screen.Spot) {
+        val cx = if (spotX.isNaN()) lcd.centerX else spotX
+        val cy = if (spotY.isNaN()) lcd.centerY else spotY
+        val hw = lcd.width * 0.09f
+        val hh = lcd.height * 0.13f
+        stroke.color = Color.WHITE
+        stroke.strokeWidth = lcd.height * 0.008f
+        c.drawRect(cx - hw, cy - hh, cx + hw, cy + hh, stroke)
+        pixelText(c, s.itemId, lcd.centerX, lcd.top + 0.30f * lcd.height, 0.8f, Color.WHITE,
+            OsdItem.Align.CENTER, outlined = true)
+        button(c, LcdLayout.at(lcd, 0.035f, 0.855f, 0.175f, 0.975f), Style.CYAN, label = "AUTO") {
+            spotX = Float.NaN; spotY = Float.NaN
+            listener?.onSpotAuto(s.itemId)
+        }
+        button(c, b(LcdLayout.MENU_OK), Style.CYAN, label = "END") { nav.close() }
     }
 
     // ================= primitives =================
@@ -767,6 +802,14 @@ class FirmwareOsdView @JvmOverloads constructor(
             MotionEvent.ACTION_UP -> {
                 val p = pressed
                 pressed = null
+                val spot = nav.screen as? Screen.Spot
+                if (p == null && spot != null && lcd.contains(x, y)) {
+                    spotX = x; spotY = y
+                    listener?.onBeep(Beep.TOUCH)
+                    listener?.onSpot(spot.itemId, event.x, event.y)
+                    invalidate()
+                    return true
+                }
                 if (p != null && p.box.contains(x, y)) {
                     if (p.enabled) {
                         listener?.onBeep(Beep.TOUCH)

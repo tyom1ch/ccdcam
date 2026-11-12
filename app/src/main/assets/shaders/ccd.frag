@@ -33,6 +33,8 @@ uniform float uVignetteStrength;
 uniform float uChromaShift;
 uniform float uHBlur;          // horizontal low-pass, in CCD cells; 0 = original sampling
 uniform float uChroma420;      // 0..1: PAL DV 4:2:0 chroma (colour shared by 2x2 cells, BT.601)
+uniform float uFade;           // FADER: 0 = picture, 1 = fully faded to uFadeWhite
+uniform float uFadeWhite;      // 1 = WHITE FADER, 0 = BLACK FADER
 uniform float uNightShot;      // 1 = NightShot look (visual emulation, no IR involved)
 
 // GLSL ES 2.0 needs constant loop bounds, so sample counts stay compile-time constants.
@@ -155,6 +157,8 @@ void main() {
 
     vec2 q = uv - 0.5;
     col *= 1.0 - dot(q, q) * uVignetteStrength;
+
+    col = mix(col, vec3(uFadeWhite), clamp(uFade, 0.0, 1.0));
 
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }
