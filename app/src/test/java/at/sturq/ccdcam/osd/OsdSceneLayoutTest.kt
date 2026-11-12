@@ -165,4 +165,25 @@ class OsdSceneLayoutTest {
         assertEquals((full[0].bottom - full[0].top) / 2f, half[0].bottom - half[0].top, 1e-3f)
         assertEquals((full.last().right - full.first().left) / 2f, half.last().right - half.first().left, 1e-3f)
     }
+
+    @Test
+    fun narrow43OsdStaysInsideAndDoesNotOverlap() {
+        val w = OsdScene.LCD_H * 4f / 3f
+        val t = java.util.GregorianCalendar(2026, 11, 31, 23, 59, 59).timeInMillis
+        val items = OsdScene.build(state(recording = true, dateTimeMs = t).copy(batteryPct = 100), true, w)
+        val quads = OsdLayout.quads(items, font, atlas)
+        quads.forEach { assertTrue("$it", it.left >= 0f && it.right <= w) }
+        // battery minutes end before the SP box starts
+        val minutes = items.filterIsInstance<OsdItem.Text>().first { it.text.endsWith("min") && it.y == 18f }
+        val sp = items.filterIsInstance<OsdItem.Sprite>().first { it.name == "sp" }
+        assertTrue(minutes.x + font.width(minutes.text) * OsdScene.PX < sp.x)
+    }
+
+    @Test
+    fun verticesUseTheGivenWidth() {
+        val w = 768f
+        val q = OsdQuad(0f, 0f, w, OsdScene.LCD_H, IRect(0, 0, 8, 8), OsdScene.WHITE)
+        val v = OsdVertices.build(listOf(q), 64, 64, w)
+        assertEquals(1f, v[OsdVertices.FLOATS_PER_VERTEX], 1e-6f)    // right edge = 1
+    }
 }

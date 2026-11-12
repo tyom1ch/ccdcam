@@ -77,13 +77,18 @@ object OsdScene {
     private const val NIGHTSHOT_ROW = LCD_H / 2f - 6.5f * PY * NIGHTSHOT_SCALE
     private const val LEFT = 20f
     private const val RIGHT = 1009f
+    /** SP/LP never closer to the battery minutes than this (narrow 4:3 OSD). */
+    private const val SP_MIN_X = 290f
 
     /**
+     * @param lcdW OSD width in LCD units for the frame's aspect: 1024 for 16:9, 768 for a 4:3
+     *   recording (height is always [LCD_H]; positions are fractions of the width).
      * @param forVideo burned-in variant: the date/time row is always included (the camcorder
      *   would record it as data code; the user asked for it in the picture), and nothing
      *   interactive or transient (buttons, menus, messages) is ever part of it.
      */
-    fun build(s: OsdIndicators, forVideo: Boolean): List<OsdItem> {
+    fun build(s: OsdIndicators, forVideo: Boolean, lcdW: Float = LCD_W): List<OsdItem> {
+        val right = lcdW - (LCD_W - RIGHT)
         val out = ArrayList<OsdItem>()
         // 1 Battery pictogram + minutes
         val level = if (s.batteryPct < 0) 0 else ((s.batteryPct + 12) / 25).coerceIn(0, 4)
@@ -93,20 +98,20 @@ object OsdScene {
 
         if (s.lamp != Lamp.MEMORY) {
             // 2 Recording mode
-            out += OsdItem.Sprite(if (s.recMode == RecMode.LP) "lp" else "sp", 0.320f * LCD_W, ROW1, OsdItem.Align.LEFT, WHITE)
+            out += OsdItem.Sprite(if (s.recMode == RecMode.LP) "lp" else "sp", maxOf(0.320f * lcdW, SP_MIN_X), ROW1, OsdItem.Align.LEFT, WHITE)
         }
         when (s.lamp) {
             Lamp.TAPE -> {
                 // 3 STBY / REC, 4 tape counter
                 if (s.recording) {
-                    if (s.blinkOn) out += OsdItem.Text("REC", 0.590f * LCD_W, ROW1, OsdItem.Align.CENTER, REC_RED)
+                    if (s.blinkOn) out += OsdItem.Text("REC", 0.590f * lcdW, ROW1, OsdItem.Align.CENTER, REC_RED)
                 } else {
-                    out += OsdItem.Text("STBY", 0.590f * LCD_W, ROW1, OsdItem.Align.CENTER, STBY_GREEN)
+                    out += OsdItem.Text("STBY", 0.590f * lcdW, ROW1, OsdItem.Align.CENTER, STBY_GREEN)
                 }
-                out += OsdItem.Text(OsdFormat.tapeCounter(s.counterMs), RIGHT, ROW1, OsdItem.Align.RIGHT, WHITE)
+                out += OsdItem.Text(OsdFormat.tapeCounter(s.counterMs), right, ROW1, OsdItem.Align.RIGHT, WHITE)
             }
             Lamp.PLAY_EDIT -> {
-                val x = 0.630f * LCD_W
+                val x = 0.630f * lcdW
                 when (s.transport) {
                     OsdIndicators.Transport.PLAY -> out += OsdItem.Sprite("play", x, ROW1, OsdItem.Align.LEFT, WHITE)
                     OsdIndicators.Transport.PAUSE -> {
@@ -120,16 +125,16 @@ object OsdScene {
                     }
                     OsdIndicators.Transport.REW -> Unit
                 }
-                out += OsdItem.Text(OsdFormat.timeCode(s.playbackMs), RIGHT, ROW1, OsdItem.Align.RIGHT, WHITE)
+                out += OsdItem.Text(OsdFormat.timeCode(s.playbackMs), right, ROW1, OsdItem.Align.RIGHT, WHITE)
             }
             Lamp.MEMORY -> Unit
         }
 
         // 5 Remaining tape + cassette pictogram
         if (s.lamp != Lamp.MEMORY) {
-            if (s.cassetteIconOn) out += OsdItem.Sprite("cassette", RIGHT, ROW2, OsdItem.Align.RIGHT, WHITE)
+            if (s.cassetteIconOn) out += OsdItem.Sprite("cassette", right, ROW2, OsdItem.Align.RIGHT, WHITE)
             if (s.showRemaining && s.remainingMin != null) {
-                out += OsdItem.Text(OsdFormat.minutes(s.remainingMin), RIGHT - 17 * PX, ROW2, OsdItem.Align.RIGHT, WHITE)
+                out += OsdItem.Text(OsdFormat.minutes(s.remainingMin), right - 17 * PX, ROW2, OsdItem.Align.RIGHT, WHITE)
             }
         }
 
@@ -137,7 +142,7 @@ object OsdScene {
         if (s.nightShot) {
             out += OsdItem.Sprite("nightshot", LEFT, ROW2, OsdItem.Align.LEFT, WHITE)
             if (s.blinkOn) {
-                out += OsdItem.Text("NIGHTSHOT", LCD_W / 2f, NIGHTSHOT_ROW, OsdItem.Align.CENTER, WHITE, NIGHTSHOT_SCALE)
+                out += OsdItem.Text("NIGHTSHOT", lcdW / 2f, NIGHTSHOT_ROW, OsdItem.Align.CENTER, WHITE, NIGHTSHOT_SCALE)
             }
         }
 
@@ -148,14 +153,14 @@ object OsdScene {
         // Date / time row
         s.dateTimeMs?.let { t ->
             val (date, time) = OsdClock.format(t)
-            out += OsdItem.Text(date, 0.050f * LCD_W, DATE_ROW, OsdItem.Align.LEFT, WHITE)
-            out += OsdItem.Text(time, 0.950f * LCD_W, DATE_ROW, OsdItem.Align.RIGHT, WHITE)
+            out += OsdItem.Text(date, 0.050f * lcdW, DATE_ROW, OsdItem.Align.LEFT, WHITE)
+            out += OsdItem.Text(time, 0.950f * lcdW, DATE_ROW, OsdItem.Align.RIGHT, WHITE)
         }
 
         if (!forVideo) {
             // Messages go under the centred NIGHTSHOT caption when it is shown.
             val msgY = if (s.nightShot) NIGHTSHOT_ROW + CELL_H * 1.2f else LCD_H * 0.47f
-            s.message?.let { out += OsdItem.Text(it, LCD_W / 2f, msgY, OsdItem.Align.CENTER, WHITE) }
+            s.message?.let { out += OsdItem.Text(it, lcdW / 2f, msgY, OsdItem.Align.CENTER, WHITE) }
         }
         return out
     }

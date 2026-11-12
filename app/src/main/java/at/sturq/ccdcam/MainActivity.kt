@@ -207,6 +207,7 @@ class MainActivity : AppCompatActivity() {
                 cam.cameraControl.enableTorch(on)
                 return true
             }
+            override fun videoOsdWidth() = videoOsdWidthFor(wide)
             override fun setVideoOsd(quads: List<at.sturq.ccdcam.osd.OsdQuad>?) {
                 videoProcessor.osdQuads = quads
             }
@@ -294,6 +295,10 @@ class MainActivity : AppCompatActivity() {
             // Preview and video are both 16:9 so the emulated 4:3/16:9 picture is framed
             // identically in both; the whole stream is shown (FIT_CENTER).
             binding.previewView.scaleType = PreviewView.ScaleType.FIT_CENTER
+            // WIDE 16:9 -> 16:9 streams; 4:3 -> 4:3 streams, so the recorded file has no
+            // pillar bars. The LCD stays 16:9 (the preview shows 4:3 with bars, like the HC90).
+            val streamAspect = if (wide) AspectRatio.RATIO_16_9 else AspectRatio.RATIO_4_3
+            binding.firmwareOsd.regionAspectInView = if (wide) 9f / 16f else 3f / 4f
 
             val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
 
@@ -304,13 +309,13 @@ class MainActivity : AppCompatActivity() {
             Log.i(TAG, "AE fps ranges ${FrameRatePlan.describe(ranges)}; PAL 25p by frame-grid conversion")
 
             preview = Preview.Builder()
-                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                .setTargetAspectRatio(streamAspect)
                 .build()
                 .also { it.setSurfaceProvider(binding.previewView.surfaceProvider) }
 
             val recorder = Recorder.Builder()
                 .setQualitySelector(QualitySelector.from(Quality.HD))
-                .setAspectRatio(AspectRatio.RATIO_16_9)
+                .setAspectRatio(streamAspect)
                 .build()
             videoCapture = VideoCapture.Builder(recorder)
                 .build()
@@ -344,8 +349,12 @@ class MainActivity : AppCompatActivity() {
         wide = !wide
         settings.aspect = if (wide) AspectSetting.RATIO_16_9 else AspectSetting.RATIO_4_3
         applyWideLabel()
-        updateFraming()
+        bindCamera()      // stream aspect changes with WIDE SELECT
     }
+
+    /** OSD width of the recorded frame: the picture's own aspect × the LCD height. */
+    private fun videoOsdWidthFor(wide: Boolean) =
+        at.sturq.ccdcam.osd.OsdScene.LCD_H * (if (wide) 16f / 9f else 4f / 3f)
 
     private fun applyWideLabel() {
         binding.wideSelectBtn.text = if (wide) "WIDE 16:9" else "WIDE 4:3"
@@ -359,14 +368,16 @@ class MainActivity : AppCompatActivity() {
     private fun updateFraming() {
         val cam = camera ?: return
         val rotation = recordingRotation ?: lastSurfaceRotation
-        val framing = CcdSurfaceProcessor.Framing(
-            regionAspect = null,   // each processor's output is its own 16:9 stream
+        val preview = CcdSurfaceProcessor.Framing(
+            regionAspect = null,   // each processor's output is its own stream
             pictureAspect = if (wide) 16f / 9f else 4f / 3f,
             sensorRotationDegrees = cam.cameraInfo.getSensorRotationDegrees(rotation),
-            lcdAspect = 16f / 9f,
+            lcdAspect = 16f / 9f,  // the emulated LCD is 16:9
         )
-        previewProcessor.framing = framing
-        videoProcessor.framing = framing
+        previewProcessor.framing = preview
+        // The recording is the picture itself: no LCD band, so no bars in the file.
+        videoProcessor.framing = preview.copy(lcdAspect = null)
+        videoProcessor.osdLcdWidth = videoOsdWidthFor(wide)
     }
 
     private fun capturePhoto() {
