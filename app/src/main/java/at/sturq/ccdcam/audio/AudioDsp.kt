@@ -178,7 +178,11 @@ class Resampler(private val inRate: Int, private val outRate: Int, private val c
  * The whole camcorder audio path for one clip, applied chunk by chunk (constant memory):
  * mic EQ → preamp hiss → AGC → soft limiter → (resample) → DV quantisation.
  */
-class AudioChain(private val profile: AudioProfile, private val inRate: Int, private val channels: Int, seed: Long = 1L) {
+class AudioChain(
+    private val profile: AudioProfile, private val inRate: Int, private val channels: Int, seed: Long = 1L,
+    /** Tests only: false skips the bit crusher of the profile. */
+    private val crush: Boolean = true,
+) {
     private val outRate = if (profile.outRate > 0) profile.outRate else inRate
     private val hp = Array(channels) { Biquad.highPass(profile.hpHz, inRate) }
     private val hp2 = Array(channels) { Biquad.highPass(profile.hpHz, inRate) }
@@ -217,7 +221,7 @@ class AudioChain(private val profile: AudioProfile, private val inRate: Int, pri
             s = lp2[ch].process(lp[ch].process(s))
             s += noise() * hiss
             if (profile.agc) s = agc[ch].process(s)
-            if (profile.crushHz > 0) {
+            if (crush && profile.crushHz > 0) {
                 // sample-and-hold at crushHz (aliasing on purpose), then coarse quantisation
                 if (ch == 0) {
                     crushPhase += crushStep

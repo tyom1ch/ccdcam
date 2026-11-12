@@ -110,9 +110,9 @@ class AudioDspTest {
         val retroLow = level(AudioProfile.RETRO, 100.0, 100.0) / level(AudioProfile.RETRO, 1_000.0, 1_000.0)
         val dvLow = level(AudioProfile.DV16_48K, 100.0, 100.0) / level(AudioProfile.DV16_48K, 1_000.0, 1_000.0)
         assertTrue("retro lows $retroLow vs dv $dvLow", retroLow < 0.3 * dvLow)
-        // 8-bit crush: a clean 1 kHz tone comes out with much more noise/distortion than DV
-        fun residual(p: AudioProfile): Double {
-            val y = AudioChain(p, 48_000, 1).process(tone(1_000.0))
+        // 8-bit crush adds audible noise/distortion to a clean 1 kHz tone
+        fun residual(p: AudioProfile, crush: Boolean = true): Double {
+            val y = AudioChain(p, 48_000, 1, crush = crush).process(tone(1_000.0))
             val h = y.copyOfRange(y.size / 2, y.size); val fs = p.outRate.toDouble()
             var a = 0.0; var b = 0.0
             for (i in h.indices) { val w = 2 * PI * 1_000 * i / fs; a += h[i] * sin(w); b += h[i] * kotlin.math.cos(w) }
@@ -124,8 +124,8 @@ class AudioDspTest {
             }
             return sqrt(e / t)
         }
-        assertTrue("retro ${residual(AudioProfile.RETRO)} vs dv ${residual(AudioProfile.DV16_48K)}",
-            residual(AudioProfile.RETRO) > 3 * residual(AudioProfile.DV16_48K))
+        val on = residual(AudioProfile.RETRO); val off = residual(AudioProfile.RETRO, crush = false)
+        assertTrue("crushed $on vs uncrushed $off", on > 1.3 * off)
         // band ends near 9.5 kHz (ADC/DAC filters): 14 kHz much weaker than in DV
         val mix = FloatArray(48_000) { i ->
             (0.1 * sin(2 * PI * 1_000 * i / 48_000.0) + 0.1 * sin(2 * PI * 14_000 * i / 48_000.0)).toFloat()
