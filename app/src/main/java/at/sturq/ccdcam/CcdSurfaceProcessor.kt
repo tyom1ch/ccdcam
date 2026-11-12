@@ -52,6 +52,7 @@ class CcdSurfaceProcessor(
 
     private val thread = HandlerThread(name).apply { start() }
     private val osd: OsdGlRenderer? = if (burnsOsd) OsdGlRenderer(context) else null
+    private val interlacer = Interlacer(context)
 
     /** CW rotation already contained in the current output buffer (sensor -> buffer). */
     @Volatile var outputRotationCw: Int = 0
@@ -144,6 +145,8 @@ class CcdSurfaceProcessor(
         var bufferToEffect: FloatArray? = null
         var effectToBuffer: FloatArray? = null
         var lcdToBuffer: FloatArray? = null
+        /** Offscreen pair for the interlace weave (created on first interlaced frame). */
+        var weave: Interlacer.Target? = null
     }
 
     override fun onInputSurface(request: SurfaceRequest) {
@@ -180,6 +183,8 @@ class CcdSurfaceProcessor(
             val outSurface = output.getSurface(executor) { event ->
                 handler.post {
                     outputs.remove(output)?.let { entry ->
+                        EGL14.eglMakeCurrent(eglDisplay, pbufferSurface, pbufferSurface, eglContext)
+                        interlacer.destroy(entry.weave)
                         try { EGL14.eglDestroySurface(eglDisplay, entry.eglSurface) } catch (_: Throwable) {}
                     }
                     output.close()
@@ -193,6 +198,7 @@ class CcdSurfaceProcessor(
                 EGL14.eglMakeCurrent(eglDisplay, pbufferSurface, pbufferSurface, eglContext)
                 for (old in stale) {
                     outputs.remove(old)?.let { e ->
+                        interlacer.destroy(e.weave)
                         try { EGL14.eglDestroySurface(eglDisplay, e.eglSurface) } catch (_: Throwable) {}
                     }
                     old.close()
@@ -257,6 +263,12 @@ class CcdSurfaceProcessor(
         // matrix without any custom rotation math on our side.
         output.updateTransformMatrix(combined, texMatrix)
 
+        // Interlace: render the look offscreen, then weave it with the previous frame below.
+        val weave = if (look.shader.interlace > 0f) {
+            entry.weave ?: interlacer.create(w, h).also { entry.weave = it }
+        } else null
+        if (weave != null) interlacer.begin(weave)
+
         GLES20.glViewport(0, 0, w, h)
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
@@ -286,6 +298,10 @@ class CcdSurfaceProcessor(
         GLES20.glDisableVertexAttribArray(aPosLoc)
         GLES20.glDisableVertexAttribArray(aTexLoc)
 
+        val b2e = entry.bufferToEffect
+        if (weave != null && b2e != null) interlacer.finish(weave, b2e, look.shader.lines, vertexBuf, texBuf)
+
+        // OSD goes on top of the woven frame (no combing on the indicators).
         val quads = osdQuads
         val lcd = entry.lcdToBuffer
         if (osd != null && quads != null && lcd != null) osd.draw(quads, lcd, osdLcdWidth)

@@ -16,6 +16,8 @@ class ProfilesTest {
         assertTrue(p.hBlur > 0f)
         // PAL DV samples colour 4:2:0
         assertEquals(1f, p.chroma420)
+        // PAL DV is interlaced (50i)
+        assertTrue(p.interlace > 0f)
     }
 
     /** Guards the look against accidental edits; change together with tools/sim.py. */
