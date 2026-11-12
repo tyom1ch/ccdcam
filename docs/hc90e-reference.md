@@ -59,4 +59,5 @@ The app writes MP4 (H.264 + AAC) through CameraX `Recorder`. It does not produce
 
 What the HC90E PAL profile does today (stage 3): the look is sampled on a 720 × 576 grid
 with 576 scanlines in upright picture space, inside a 4:3 or 16:9 picture that is pillar- or
-letterboxed into a 1280 × 720 (16:9) recording. The file resolution is 1280 × 720.
+letterboxed into a 16:9 recording: 1280 × 720 in landscape, 720 × 1280 in portrait (CameraX
+rotates the pixels; verified on Pixel 9 Pro XL). The file is never 720 × 576.

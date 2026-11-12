@@ -43,7 +43,8 @@ object Profiles {
      * Stage 3 (spatial): the look is sampled on a 720x576 grid (PAL DV active picture,
      * see docs/hc90e-reference.md) with 576 scanlines and a horizontal low-pass, computed
      * in upright picture space, no anamorphic squish (stretch 1.0). The recorded file is
-     * still CameraX Recorder output (1280x720 H.264), NOT a 720x576 file.
+     * still CameraX Recorder output (16:9 H.264: 1280x720 landscape, 720x1280 portrait),
+     * NOT a 720x576 file.
      * Colour, frame rate and interlace come in later stages; colour values are still
      * CCDCam's for now. The timecode stays at 30 until real 25 fps capture exists.
      */

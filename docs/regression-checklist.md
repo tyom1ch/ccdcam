@@ -60,8 +60,10 @@ refused while recording; the choice survives an app restart.
 - [ ] Switching back and forth during preview does not freeze or black out the preview.
 
 ## 9. HC90E PAL geometry (stage 3 onward)
-The file is still CameraX `Recorder` output: **1280×720 H.264**, not 720×576. 720×576 is
-only the emulated sampling grid. Expected `ffprobe` size: 1280×720 (plus rotation metadata).
+The file is still CameraX `Recorder` output, 16:9 H.264 — not 720×576. 720×576 is only the
+emulated sampling grid. Expected size: **1280×720 when recorded in landscape, 720×1280 in
+portrait**. On Pixel 9 Pro XL CameraX's stream-sharing node rotates the video pixels (Recorder
+logs `TransformationInfo ... getRotationDegrees=0`), so there is no rotation metadata.
 
 Diagnostics: `adb logcat -s CcdProcessor` prints the processor buffer size, its
 `sensorToBuffer` rotation (expected 0 with StreamSharing) and, for every framing change,
