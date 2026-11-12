@@ -19,7 +19,8 @@ OUT = Path(__file__).resolve().parent.parent / "app/src/main/res/raw"
 
 # source file -> Android resource name
 UI = {
-    "ui_press.wav": "ui_press",
+    "click.wav": "ui_click",
+    "decklick.wav": "ui_declick",
     "alert.wav": "alert",
     "power_on.wav": "power_on",
     "cassete_eject.wav": "cassette_eject",

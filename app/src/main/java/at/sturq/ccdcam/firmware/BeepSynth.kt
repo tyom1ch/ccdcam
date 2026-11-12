@@ -15,13 +15,15 @@ enum class Beep(
     /** Part of the BEEP "melody" (silenced by BEEP OFF); mechanical sounds are not. */
     val melody: Boolean = true,
 ) {
-    /** Touch-panel key (res/raw/ui_press). */
+    /** Touch-panel key pressed (res/raw/ui_click). */
     TOUCH(listOf(2093.0 to 45)),
+    /** Touch-panel key released (res/raw/ui_declick). */
+    TOUCH_UP(listOf(1760.0 to 35)),
 
-    /** Recording start: rising two-note figure (synthesized). */
+    /** Recording start (res/raw/alert; synthesized fallback). */
     REC_START(listOf(1568.0 to 70, 2093.0 to 120)),
 
-    /** Recording stop: falling two-note figure (synthesized). */
+    /** Recording stop (res/raw/alert; synthesized fallback). */
     REC_STOP(listOf(2093.0 to 70, 1568.0 to 120)),
 
     /** Warning indicator (res/raw/alert). */

@@ -33,7 +33,7 @@ class SfxTest {
     @Test
     fun importedResourcesAreMono48kPcm() {
         val dir = listOf(File("src/main/res/raw"), File("app/src/main/res/raw")).first { it.exists() }
-        for (n in listOf("ui_press", "alert", "power_on", "cassette_eject", "cassette_insert", "tape_loop")) {
+        for (n in listOf("ui_click", "ui_declick", "alert", "power_on", "cassette_eject", "cassette_insert", "tape_loop")) {
             val m = WavPcm.parseMono(File(dir, "$n.wav").readBytes())
             assertEquals(n, 48_000, m.rate)
             assertTrue(n, m.samples.isNotEmpty() && m.samples.all { kotlin.math.abs(it) <= 1f })

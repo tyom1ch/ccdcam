@@ -797,6 +797,7 @@ class FirmwareOsdView @JvmOverloads constructor(
                     return nav.isMenuOpen
                 }
                 pressed = hit
+                if (hit.enabled) listener?.onBeep(Beep.TOUCH)   // key goes down: click
                 invalidate()
                 return true
             }
@@ -813,7 +814,7 @@ class FirmwareOsdView @JvmOverloads constructor(
                 }
                 if (p != null && p.box.contains(x, y)) {
                     if (p.enabled) {
-                        listener?.onBeep(Beep.TOUCH)
+                        listener?.onBeep(Beep.TOUCH_UP)        // key released: declick
                         p.action()
                     }
                 }

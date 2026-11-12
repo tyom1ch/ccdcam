@@ -24,7 +24,10 @@ class BeepPlayer(context: Context) {
     @Volatile private var loop: FloatArray? = null
 
     private val raw = mapOf(
-        Beep.TOUCH to R.raw.ui_press,
+        Beep.TOUCH to R.raw.ui_click,
+        Beep.TOUCH_UP to R.raw.ui_declick,
+        Beep.REC_START to R.raw.alert,
+        Beep.REC_STOP to R.raw.alert,
         Beep.WARNING to R.raw.alert,
         Beep.POWER_ON to R.raw.power_on,
         Beep.CASSETTE_EJECT to R.raw.cassette_eject,
