@@ -111,8 +111,8 @@ class FirmwareNavigatorTest {
         n.openPMenu(); n.pMenuSelect(HC90eMenu.P_MENU)
         n.ok()                                             // CAMERA SET
         assertEquals(Screen.MenuItems(0, 0), n.screen)
-        n.ok()                                             // first row works (EXPOSURE), no dead PROGRAM AE
-        assertEquals(HC90eMenu.EXPOSURE, (n.screen as Screen.Setting).itemId)
+        n.ok()                                             // first row works (SPOT METER), no dead PROGRAM AE
+        assertEquals(Screen.Spot(HC90eMenu.SPOT_METER), n.screen)
     }
 
     @Test
