@@ -69,6 +69,25 @@ class ShaderUniformsTest {
     }
 
     @Test
+    fun weaveShaderDeclaresWhatTheInterlacerBinds() {
+        val f = shader("weave.frag")
+        val u = uniformsOf(f)
+        assertEquals("sampler2D", u["sCur"])
+        assertEquals("sampler2D", u["sPrev"])
+        assertEquals("mat3", u["uBufferToEffect"])
+        assertEquals("float", u["uLines"])
+    }
+
+    @Test
+    fun fieldParityAlternatesPerPictureLine() {
+        val lines = 576f
+        assertEquals(0, Interlacer.fieldOf(0.5f / lines, lines))
+        assertEquals(1, Interlacer.fieldOf(1.5f / lines, lines))
+        assertEquals(0, Interlacer.fieldOf(2.5f / lines, lines))
+        assertEquals(1, Interlacer.fieldOf(575.5f / lines, lines))
+    }
+
+    @Test
     fun pictureSpaceVaryingIsWired() {
         assertTrue(Regex("""varying\s+vec2\s+vEffectUv\s*;""").containsMatchIn(vert))
         assertTrue(Regex("""varying\s+vec2\s+vEffectUv\s*;""").containsMatchIn(frag))

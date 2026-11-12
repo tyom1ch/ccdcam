@@ -30,6 +30,8 @@ data class ShaderParams(
     val hBlur: Float,
     /** PAL DV 4:2:0 chroma subsampling strength, 0 = off, 1 = full. */
     val chroma420: Float = 0f,
+    /** PAL interlace weave (fields 1 frame apart), 0 = progressive, >0 = on. */
+    val interlace: Float = 0f,
 )
 
 /**

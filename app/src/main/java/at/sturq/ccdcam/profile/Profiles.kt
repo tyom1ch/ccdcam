@@ -35,6 +35,7 @@ object Profiles {
             chromaShift = 0.0003f,
             hBlur = 0.5f,
             chroma420 = 1f,
+            interlace = 1f,
         ),
     )
 }
