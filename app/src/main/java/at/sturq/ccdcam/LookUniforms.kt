@@ -21,7 +21,6 @@ class LookUniforms(program: Int) {
 
     fun apply(profile: CameraProfile) {
         val p = profile.shader
-        GLES20.glUniform1f(loc("uEffectSpace"), profile.effectSpace.uniformValue)
         GLES20.glUniform1f(loc("uCcdX"), p.ccdX)
         GLES20.glUniform1f(loc("uCcdY"), p.ccdY)
         GLES20.glUniform1f(loc("uLines"), p.lines)
@@ -48,7 +47,6 @@ class LookUniforms(program: Int) {
 
         /** Every look uniform [apply] sets; ShaderUniformsTest checks them against ccd.frag. */
         val NAMES: List<String> = listOf(
-            "uEffectSpace",
             "uCcdX", "uCcdY", "uLines",
             "uSmearThreshold", "uSmearStrength", "uSmearRange",
             "uFlareThreshold", "uFlareRange", "uFlareStrength",

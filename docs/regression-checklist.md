@@ -1,5 +1,8 @@
 # Regression checklist
 
+> Since stage 5 the app has a single camera (HC90E PAL); the CCDCam profile was removed at the
+> owner's request. Items below that mention `CCDCAM_DEFAULT` / CCDCam are historical.
+
 Run on a real device at the end of every stage, for **every** camera profile that exists at
 that stage (from stage 1 on: `CCDCAM_DEFAULT` and `HC90E_PAL`). A stage is not done until
 GitHub Actions is green, the `ccdcam-debug` APK artifact was installed from that run, and
@@ -110,3 +113,13 @@ later, separate stage).
       previous), ▶▶ (next), time code `h:mm:ss:ff` (25 fps). DATA CODE DATE/TIME shows the
       scene's date/time. Back to `TAPE`: camera on, recording works.
 - [ ] Pinch-zoom still works outside the touch-panel buttons.
+
+## 11. Rotation of the firmware display (stage 5 onward)
+The activity stays portrait (no recreation, so rotating never interrupts a recording or
+rebinds CameraX); the firmware display and the body-control labels rotate with the phone.
+- [ ] Landscape (both directions): the 16:9 LCD fills the preview, OSD text upright, buttons
+      work where they are drawn.
+- [ ] Upside-down portrait: OSD upright.
+- [ ] Rotate during recording: recording continues, OSD follows the phone, the recorded
+      picture keeps the orientation it started with (section 9).
+- [ ] MEMORY / TAPE / PLAY/EDIT and WIDE labels rotate too.

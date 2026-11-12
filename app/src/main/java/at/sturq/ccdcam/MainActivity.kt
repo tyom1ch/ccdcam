@@ -6,15 +6,11 @@ import android.content.ContentValues
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
-import android.os.SystemClock
 import android.provider.MediaStore
 import android.view.MotionEvent
 import android.view.OrientationEventListener
 import android.view.ScaleGestureDetector
 import android.view.Surface
-import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -36,8 +32,6 @@ import androidx.core.content.ContextCompat
 import at.sturq.ccdcam.databinding.ActivityMainBinding
 import at.sturq.ccdcam.firmware.Hc90eController
 import at.sturq.ccdcam.firmware.Lamp
-import at.sturq.ccdcam.profile.CameraProfile
-import at.sturq.ccdcam.profile.EffectSpace
 import at.sturq.ccdcam.profile.Profiles
 import at.sturq.ccdcam.settings.AspectSetting
 import at.sturq.ccdcam.settings.SettingsStore
@@ -49,11 +43,10 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 /**
- * CCDCam: standard CameraX pipeline (PreviewView + VideoCapture<Recorder>) with the CCD
- * shader injected via [CcdEffect] (a SurfaceProcessor-based CameraEffect). All rotation
- * and orientation handling is delegated to CameraX — we never rotate bitmaps or compute
- * encoder dimensions manually. Photo is grabbed from PreviewView.bitmap, which is already
- * filtered and matches what the user sees.
+ * DCR-HC90E emulator: CameraX pipeline (PreviewView + VideoCapture<Recorder>) with the CCD
+ * shader injected via [CcdEffect] (a SurfaceProcessor-based CameraEffect) and the emulated
+ * touch-panel firmware drawn on top ([Hc90eController]). Rotation of the recorded video is
+ * delegated to CameraX; the shader's picture geometry follows the same rotation.
  */
 class MainActivity : AppCompatActivity() {
 
@@ -61,13 +54,11 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var settings: SettingsStore
-    /** Active camera profile. Long-press the bottom-left HUD label to cycle (test hook until the menu UI). */
-    private lateinit var profile: CameraProfile
 
     private lateinit var ccdProcessor: CcdSurfaceProcessor
     private lateinit var ccdEffect: CcdEffect
 
-    /** HC90E firmware display/tape/playback; inactive (and invisible) for CCDCam. */
+    /** HC90E firmware display, virtual tape and PLAY/EDIT playback. */
     private lateinit var hc: Hc90eController
 
     private var cameraProvider: ProcessCameraProvider? = null
@@ -77,7 +68,8 @@ class MainActivity : AppCompatActivity() {
     private var recording: Recording? = null
 
     private var lensFacing = CameraSelector.LENS_FACING_BACK
-    private var aspectRatio: Int = AspectRatio.RATIO_16_9
+    /** Picture aspect (WIDE SELECT): 16:9 or 4:3, framed in the shader. */
+    private var wide = true
     private var mode = Mode.VIDEO
 
     @Volatile private var lastSurfaceRotation: Int = Surface.ROTATION_0
@@ -114,33 +106,9 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val uiHandler = Handler(Looper.getMainLooper())
     private val ioScope = CoroutineScope(Dispatchers.IO)
 
-    private var recordStartMs = 0L
-    private var blinkOn = false
-
     private lateinit var scaleDetector: ScaleGestureDetector
-
-    private val tickRunnable = object : Runnable {
-        override fun run() {
-            if (recording != null) {
-                val elapsed = SystemClock.elapsedRealtime() - recordStartMs
-                binding.timecode.text = formatTimecode(elapsed, fps = profile.timecodeFps)
-                blinkOn = !blinkOn
-                binding.recDot.visibility = if (blinkOn) View.VISIBLE else View.INVISIBLE
-                uiHandler.postDelayed(this, 500)
-            }
-        }
-    }
-
-    private val dateRunnable = object : Runnable {
-        override fun run() {
-            binding.dateTxt.text = SimpleDateFormat("yyyy MM dd", Locale.US)
-                .format(System.currentTimeMillis())
-            uiHandler.postDelayed(this, 60_000)
-        }
-    }
 
     private val permLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -161,13 +129,10 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         settings = SettingsStore(this)
-        profile = settings.profile
-        aspectRatio = when (settings.aspect) {
-            AspectSetting.RATIO_4_3 -> AspectRatio.RATIO_4_3
-            AspectSetting.RATIO_16_9 -> AspectRatio.RATIO_16_9
-        }
+        wide = settings.aspect == AspectSetting.RATIO_16_9
 
         ccdProcessor = CcdSurfaceProcessor(this)
+        ccdProcessor.profile = Profiles.HC90E_PAL
         ccdEffect = CcdEffect(ccdProcessor)
         hc = Hc90eController(this, binding, settings, object : Hc90eController.Host {
             override fun isRecording() = recording != null
@@ -179,25 +144,16 @@ class MainActivity : AppCompatActivity() {
             }
             override fun setPhotoMode(photo: Boolean) = setMode(if (photo) Mode.PHOTO else Mode.VIDEO)
         })
-        applyProfile(profile)
-        binding.hcProfileTxt.setOnLongClickListener {
-            cycleProfile()
-            true
-        }
+        applyWideLabel()
+
+        binding.modePhoto.setOnClickListener { hc.setLamp(Lamp.MEMORY) }
+        binding.modeVideo.setOnClickListener { hc.setLamp(Lamp.TAPE) }
         binding.modePlay.setOnClickListener { hc.setLamp(Lamp.PLAY_EDIT) }
-        binding.wideSelectBtn.setOnClickListener { toggleAspect() }
         binding.modeVideo.setOnLongClickListener {
-            // HC90E: stand-in for the OPEN/EJECT lever. CCDCam: not handled.
-            if (hc.active) hc.ejectOrInsert()
-            hc.active
-        }
-
-        binding.profileTxt.setOnLongClickListener {
-            cycleProfile()
+            hc.ejectOrInsert()   // stand-in for the OPEN/EJECT lever
             true
         }
-
-        binding.aspectBtn.setOnClickListener { toggleAspect() }
+        binding.wideSelectBtn.setOnClickListener { toggleWide() }
         binding.flipBtn.setOnClickListener {
             if (recording != null) {
                 Toast.makeText(this, "Stop recording before flipping", Toast.LENGTH_SHORT).show()
@@ -214,8 +170,6 @@ class MainActivity : AppCompatActivity() {
                 Mode.VIDEO -> toggleRecording()
             }
         }
-        binding.modePhoto.setOnClickListener { if (hc.active) hc.setLamp(Lamp.MEMORY) else setMode(Mode.PHOTO) }
-        binding.modeVideo.setOnClickListener { if (hc.active) hc.setLamp(Lamp.TAPE) else setMode(Mode.VIDEO) }
 
         scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -224,7 +178,6 @@ class MainActivity : AppCompatActivity() {
                 val newRatio = (zs.zoomRatio * detector.scaleFactor)
                     .coerceIn(zs.minZoomRatio, zs.maxZoomRatio)
                 cam.cameraControl.setZoomRatio(newRatio)
-                updateZoomLabel(newRatio)
                 return true
             }
         })
@@ -233,7 +186,7 @@ class MainActivity : AppCompatActivity() {
             true
         }
 
-        setMode(Mode.VIDEO)
+        hc.start()
         val missing = missingPerms()
         if (missing.isNotEmpty()) permLauncher.launch(missing) else bindCamera()
     }
@@ -241,15 +194,9 @@ class MainActivity : AppCompatActivity() {
     private fun setMode(m: Mode) {
         if (recording != null && m != Mode.VIDEO) stopRecording()
         mode = m
-        val active = ContextCompat.getColor(this, R.color.hud_accent)
-        val dim = ContextCompat.getColor(this, R.color.hud_dim)
-        binding.modePhoto.setTextColor(if (m == Mode.PHOTO) active else dim)
-        binding.modeVideo.setTextColor(if (m == Mode.VIDEO) active else dim)
         binding.shutterBtn.setBackgroundResource(
             if (m == Mode.PHOTO) R.drawable.shutter_photo else R.drawable.shutter_video
         )
-        binding.modeTxt.text = if (m == Mode.PHOTO) "PHOTO" else "STBY"
-        binding.timecode.text = if (m == Mode.PHOTO) "          " else "00:00:00:00"
     }
 
     private fun isGranted(perm: String) =
@@ -268,28 +215,25 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindCamera() {
         if (!hasPerms()) return
-        if (hc.cameraSuspended) return   // HC90E PLAY/EDIT: camera section off
+        if (hc.cameraSuspended) return   // PLAY/EDIT: camera section off
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
             val provider = providerFuture.get()
             cameraProvider = provider
             provider.unbindAll()
 
-            // Picture framing (HC90E): preview and video share one 16:9 region so the emulated
-            // 4:3/16:9 picture is framed identically in both; the whole region is shown
-            // (FIT_CENTER). CCDCam keeps its original binding untouched.
-            val picture = usesPictureFraming()
-            binding.previewView.scaleType =
-                if (picture) PreviewView.ScaleType.FIT_CENTER else PreviewView.ScaleType.FILL_CENTER
+            // Preview and video share one 16:9 region so the emulated 4:3/16:9 picture is framed
+            // identically in both; the whole region is shown (FIT_CENTER).
+            binding.previewView.scaleType = PreviewView.ScaleType.FIT_CENTER
 
             preview = Preview.Builder()
-                .setTargetAspectRatio(if (picture) AspectRatio.RATIO_16_9 else aspectRatio)
+                .setTargetAspectRatio(AspectRatio.RATIO_16_9)
                 .build()
                 .also { it.setSurfaceProvider(binding.previewView.surfaceProvider) }
 
             val recorder = Recorder.Builder()
                 .setQualitySelector(QualitySelector.from(Quality.HD))
-                .apply { if (picture) setAspectRatio(AspectRatio.RATIO_16_9) }
+                .setAspectRatio(AspectRatio.RATIO_16_9)
                 .build()
             videoCapture = VideoCapture.withOutput(recorder).also {
                 it.targetRotation = lastSurfaceRotation
@@ -304,7 +248,6 @@ class MainActivity : AppCompatActivity() {
             val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
             try {
                 camera = provider.bindToLifecycle(this, selector, group)
-                updateZoomLabel(camera?.cameraInfo?.zoomState?.value?.zoomRatio ?: 1f)
                 updateFraming()
             } catch (e: Exception) {
                 Toast.makeText(this, "Camera bind failed: ${e.message}", Toast.LENGTH_LONG).show()
@@ -312,79 +255,36 @@ class MainActivity : AppCompatActivity() {
         }, ContextCompat.getMainExecutor(this))
     }
 
-    private fun toggleAspect() {
+    /** WIDE SELECT: the picture aspect is a shader framing; the camera stays as bound. */
+    private fun toggleWide() {
         if (recording != null) {
             Toast.makeText(this, "Stop recording first", Toast.LENGTH_SHORT).show()
             return
         }
-        aspectRatio = if (aspectRatio == AspectRatio.RATIO_16_9)
-            AspectRatio.RATIO_4_3 else AspectRatio.RATIO_16_9
-        settings.aspect = if (aspectRatio == AspectRatio.RATIO_4_3)
-            AspectSetting.RATIO_4_3 else AspectSetting.RATIO_16_9
-        applyAspectLabel()
-        if (usesPictureFraming()) {
-            // Picture aspect is a shader framing (pillar/letterbox); the camera stays as bound.
-            updateFraming()
-        } else {
-            bindCamera()
-        }
+        wide = !wide
+        settings.aspect = if (wide) AspectSetting.RATIO_16_9 else AspectSetting.RATIO_4_3
+        applyWideLabel()
+        updateFraming()
     }
 
-    private fun usesPictureFraming() = profile.effectSpace == EffectSpace.PICTURE
+    private fun applyWideLabel() {
+        binding.wideSelectBtn.text = if (wide) "WIDE 16:9" else "WIDE 4:3"
+    }
 
     /**
      * Sends the current framing to the processor: shared region (16:9, see bindCamera),
-     * picture aspect from the 4:3/16:9 setting, and the CW rotation CameraX uses to make the
-     * sensor image upright for the current (or recording) target rotation.
+     * picture aspect from WIDE SELECT, the emulated 16:9 LCD band, and the CW rotation CameraX
+     * uses to make the sensor image upright for the current (or recording) target rotation.
      */
     private fun updateFraming() {
         val cam = camera ?: return
         val rotation = recordingRotation ?: lastSurfaceRotation
         ccdProcessor.framing = CcdSurfaceProcessor.Framing(
             regionAspect = 16f / 9f,
-            pictureAspect = if (aspectRatio == AspectRatio.RATIO_4_3) 4f / 3f else 16f / 9f,
+            pictureAspect = if (wide) 16f / 9f else 4f / 3f,
             sensorRotationDegrees = cam.cameraInfo.getSensorRotationDegrees(rotation),
-            // HC90E: the picture sits in the emulated 16:9 LCD band, like the OSD.
-            lcdAspect = if (usesPictureFraming()) 16f / 9f else null,
+            lcdAspect = 16f / 9f,
         )
-    }
-
-    private fun applyAspectLabel() {
-        // Horizontal anamorphic squish in the shader (uStretch on X axis) — applies to both
-        // preview and video output uniformly, so videos get the CCD/Hi8 character that comes
-        // from a tighter horizontal sample range scaled to fill output width.
-        ccdProcessor.stretch = profile.stretch
-        binding.aspectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
-        binding.wideSelectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "WIDE 4:3" else "WIDE 16:9"
-    }
-
-    /** Pushes [p] to the GL processor and HUD (the caller rebinds if the camera is bound). */
-    private fun applyProfile(p: CameraProfile) {
-        profile = p
-        ccdProcessor.profile = p
-        binding.profileTxt.text = p.hudLabel
-        applyAspectLabel()
-        hc.setActive(usesPictureFraming())
-    }
-
-    private fun cycleProfile() {
-        if (recording != null) {
-            Toast.makeText(this, "Stop recording before switching profile", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val all = Profiles.ALL
-        val next = all[(all.indexOf(profile) + 1) % all.size]
-        settings.profile = next
-        applyProfile(next)
-        // Profiles differ in preview aspect / scale type / Recorder aspect -> rebind.
-        bindCamera()
-        Toast.makeText(this, next.displayName, Toast.LENGTH_SHORT).show()
-    }
-
-    private fun updateZoomLabel(ratio: Float) {
-        binding.zoomTxt.text = String.format(Locale.US, "%.1f×", ratio)
-        val color = if (ratio > 1.05f) R.color.hud_accent else R.color.hud_dim
-        binding.zoomTxt.setTextColor(ContextCompat.getColor(this, color))
     }
 
     private fun capturePhoto() {
@@ -396,15 +296,11 @@ class MainActivity : AppCompatActivity() {
         binding.shutterBtn.isEnabled = false
         val rot = photoRotationCw
         ioScope.launch {
-            // 1. Rotate to physical orientation so floor ends up at the bottom of the file.
+            // Rotate to physical orientation so floor ends up at the bottom of the file.
             val upright = if (rot == 0) bmp else {
                 val m = android.graphics.Matrix().apply { postRotate(rot.toFloat()) }
                 Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
             }
-            // No anamorphic post-process: reference OG sushitrash footage has no visible
-            // stretch (buildings/trees keep normal proportions). The CCD aesthetic comes
-            // from the shader's warm grade, lifted blacks, soft scanlines, and vignette —
-            // all already applied during preview rendering.
             val uri = savePhoto(upright)
             withContext(Dispatchers.Main) {
                 Toast.makeText(
@@ -462,7 +358,6 @@ class MainActivity : AppCompatActivity() {
         vc.targetRotation = lastSurfaceRotation
         recordingRotation = lastSurfaceRotation
         updateFraming()
-        binding.modeTxt.text = "REC"
         recording = vc.output
             .prepareRecording(this, opts)
             .withAudioEnabled()
@@ -470,8 +365,6 @@ class MainActivity : AppCompatActivity() {
                 when (event) {
                     is VideoRecordEvent.Start -> {
                         binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video_recording)
-                        recordStartMs = SystemClock.elapsedRealtime()
-                        uiHandler.post(tickRunnable)
                         hc.onRecordingStarted()
                     }
                     is VideoRecordEvent.Status -> {
@@ -485,10 +378,6 @@ class MainActivity : AppCompatActivity() {
                         recordingRotation = null
                         updateFraming()
                         binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video)
-                        binding.recDot.visibility = View.INVISIBLE
-                        binding.modeTxt.text = "STBY"
-                        binding.timecode.text = "00:00:00:00"
-                        uiHandler.removeCallbacks(tickRunnable)
                         val msg = if (event.hasError())
                             "Save error: ${event.error}"
                         else
@@ -506,15 +395,12 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        uiHandler.post(dateRunnable)
         if (orientationListener.canDetectOrientation()) orientationListener.enable()
     }
 
     override fun onPause() {
         if (recording != null) stopRecording()
         hc.onHostPause()
-        uiHandler.removeCallbacks(tickRunnable)
-        uiHandler.removeCallbacks(dateRunnable)
         orientationListener.disable()
         super.onPause()
     }

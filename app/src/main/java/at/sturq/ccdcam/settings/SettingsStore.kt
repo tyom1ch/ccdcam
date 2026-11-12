@@ -6,8 +6,6 @@ import at.sturq.ccdcam.firmware.FirmwareSettings
 import at.sturq.ccdcam.firmware.HC90eMenu
 import at.sturq.ccdcam.firmware.RecMode
 import at.sturq.ccdcam.firmware.VirtualCassette
-import at.sturq.ccdcam.profile.CameraProfile
-import at.sturq.ccdcam.profile.Profiles
 
 /** Aspect ratio setting; [prefValue] is the exact string CCDCam has always stored. */
 enum class AspectSetting(val prefValue: String) {
@@ -32,12 +30,6 @@ class SettingsStore(private val prefs: SharedPreferences) {
         ) AspectSetting.RATIO_4_3 else AspectSetting.RATIO_16_9
         set(value) {
             prefs.edit().putString(KEY_ASPECT, value.prefValue).apply()
-        }
-
-    var profile: CameraProfile
-        get() = Profiles.byId(prefs.getString(KEY_PROFILE, null))
-        set(value) {
-            prefs.edit().putString(KEY_PROFILE, value.id).apply()
         }
 
     /**
@@ -90,7 +82,6 @@ class SettingsStore(private val prefs: SharedPreferences) {
     companion object {
         const val PREFS_NAME = "ccdcam"
         const val KEY_ASPECT = "aspect"
-        const val KEY_PROFILE = "profile"
         const val KEY_FW_REC_MODE = "fw_rec_mode"
         const val KEY_FW_AUDIO_MODE = "fw_audio_mode"
         const val KEY_FW_DATA_CODE = "fw_data_code"

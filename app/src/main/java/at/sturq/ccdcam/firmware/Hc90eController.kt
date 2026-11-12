@@ -17,8 +17,8 @@ import at.sturq.ccdcam.settings.SettingsStore
 import java.util.concurrent.Executors
 
 /**
- * Glue between MainActivity and the emulated HC90E firmware: shows/hides the firmware
- * display instead of the CCDCam HUD, keeps the virtual cassette, plays control sounds and runs
+ * Glue between MainActivity and the emulated HC90E firmware: drives the firmware display,
+ * keeps the virtual cassette, plays control sounds and runs
  * PLAY/EDIT tape playback. Nothing here touches CameraX or GL directly — camera on/off and
  * recording stop go through [Host].
  */
@@ -55,27 +55,15 @@ class Hc90eController(
 
     // ================= activation / lamps =================
 
-    fun setActive(on: Boolean) {
-        if (active == on) return
-        if (!on && navigator.lamp == Lamp.PLAY_EDIT) leavePlayback()
-        active = on
-        val ccd = if (on) View.GONE else View.VISIBLE
-        listOf(b.topHud, b.zoomBar, b.bottomHud, b.bracketTl, b.bracketTr, b.bracketBl, b.bracketBr)
-            .forEach { it.visibility = ccd }
-        b.firmwareOsd.visibility = if (on) View.VISIBLE else View.GONE
-        b.modePlay.visibility = if (on) View.VISIBLE else View.GONE
-        b.hcControls.visibility = if (on) View.VISIBLE else View.GONE
-        b.modePhoto.text = if (on) "MEMORY" else "PHOTO"
-        b.modeVideo.text = if (on) "TAPE" else "VIDEO"
-        if (on) {
-            b.firmwareOsd.navigator = navigator
-            b.firmwareOsd.listener = this
-            navigator.lamp = Lamp.TAPE
-            host.setPhotoMode(false)
-            powerOn()
-        } else {
-            b.firmwareOsd.listener = null
-        }
+    /** Power on in CAMERA-TAPE, like switching the camcorder on. */
+    fun start() {
+        if (active) return
+        active = true
+        b.firmwareOsd.navigator = navigator
+        b.firmwareOsd.listener = this
+        navigator.lamp = Lamp.TAPE
+        host.setPhotoMode(false)
+        powerOn()
         updateLampLabels()
     }
 
@@ -102,10 +90,6 @@ class Hc90eController(
     }
 
     private fun updateLampLabels() {
-        if (!active) {
-            b.modePlay.setTextColor(color(R.color.hud_dim))
-            return
-        }
         b.modeVideo.setTextColor(color(if (navigator.lamp == Lamp.TAPE) R.color.hud_accent else R.color.hud_dim))
         b.modePhoto.setTextColor(color(if (navigator.lamp == Lamp.MEMORY) R.color.hud_accent else R.color.hud_dim))
         b.modePlay.setTextColor(color(if (navigator.lamp == Lamp.PLAY_EDIT) R.color.hud_accent else R.color.hud_dim))
