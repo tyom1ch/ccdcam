@@ -60,3 +60,32 @@ class FrameRateMeter(private val window: Int = 30) {
     /** Rounded fps for display ("25p"), or null. */
     fun roundedFps(): Int? = fps()?.let { Math.round(it).toInt() }
 }
+
+/**
+ * Turns the camera's native rate (e.g. 30 fps) into constant-frame-rate PAL video without asking
+ * the camera for 25 fps (a fixed [25,25] AE range is missing or freezes on some phones).
+ * Output ticks are exactly one period apart on the camera clock, so the MP4 is CFR and stays in
+ * sync with audio; each tick takes the first camera frame within half a period of it (≤ ±20 ms
+ * at 25 fps), the others are dropped.
+ */
+class FrameDecimator(fps: Int = FrameRatePlan.PAL_FPS) {
+    private val periodNs = 1_000_000_000L / fps
+    private var nextNs = Long.MIN_VALUE
+
+    /** Presentation time for the frame captured at [timestampNs], or null to drop it. */
+    @Synchronized
+    fun accept(timestampNs: Long): Long? {
+        if (nextNs == Long.MIN_VALUE) nextNs = timestampNs
+        if (timestampNs < nextNs - periodNs / 2) return null
+        // Camera gap: skip ticks that already passed, keep the grid.
+        while (timestampNs - nextNs > periodNs / 2) nextNs += periodNs
+        val out = nextNs
+        nextNs += periodNs
+        return out
+    }
+
+    @Synchronized
+    fun reset() {
+        nextNs = Long.MIN_VALUE
+    }
+}

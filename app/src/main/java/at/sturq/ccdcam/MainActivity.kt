@@ -9,7 +9,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
-import android.util.Range
 import android.provider.MediaStore
 import android.view.MotionEvent
 import android.view.OrientationEventListener
@@ -34,6 +33,7 @@ import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
+import at.sturq.ccdcam.camera.FrameDecimator
 import at.sturq.ccdcam.camera.FrameRatePlan
 import at.sturq.ccdcam.databinding.ActivityMainBinding
 import at.sturq.ccdcam.firmware.Hc90eController
@@ -123,20 +123,12 @@ class MainActivity : AppCompatActivity() {
     private val ioScope = CoroutineScope(Dispatchers.IO)
     private val uiHandler = Handler(Looper.getMainLooper())
 
-    /** Fixed [25, 25] requested for the current binding (device supports it). */
-    private var palRequested = false
-
     /** Shows the measured frame rate on the body (outside the emulated LCD), once a second. */
     private val fpsTicker = object : Runnable {
         override fun run() {
-            // The video stream only runs while recording; the session-wide AE rate is the same.
-            val fps = (if (recording != null) videoProcessor else previewProcessor).frameRateMeter.roundedFps()
-            binding.fpsTxt.text = when {
-                fps == null -> "--p"
-                palRequested && fps == FrameRatePlan.PAL_FPS -> "PAL ${fps}p"
-                palRequested -> "${fps}p (25p asked)"
-                else -> "${fps}p · 25p n/a"
-            }
+            // Recording: measured rate of the MP4 stream; standby: the target.
+            val fps = if (recording != null) videoProcessor.frameRateMeter.roundedFps() else null
+            binding.fpsTxt.text = if (fps != null) "PAL ${fps}p" else "PAL 25p"
             uiHandler.postDelayed(this, 1_000)
         }
     }
@@ -165,7 +157,7 @@ class MainActivity : AppCompatActivity() {
         wide = settings.aspect == AspectSetting.RATIO_16_9
 
         previewProcessor = CcdSurfaceProcessor(this, name = "CcdPreview")
-        videoProcessor = CcdSurfaceProcessor(this, name = "CcdVideo", burnsOsd = true)
+        videoProcessor = CcdSurfaceProcessor(this, name = "CcdVideo", burnsOsd = true, decimator = FrameDecimator())
         for (p in listOf(previewProcessor, videoProcessor)) p.profile = Profiles.HC90E_PAL
         previewEffect = CcdEffect(previewProcessor, CameraEffect.PREVIEW)
         videoEffect = CcdEffect(videoProcessor, CameraEffect.VIDEO_CAPTURE)
@@ -266,19 +258,14 @@ class MainActivity : AppCompatActivity() {
 
             val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
 
-            // PAL 25 fps: only a fixed [25, 25] AE range gives constant-frame-rate video. Ask for
-            // it when the device lists it; otherwise keep the native rate (no frame dropping).
+            // PAL 25 fps: the camera keeps its native rate (a fixed [25,25] request froze it);
+            // the video processor converts to 25 fps CFR (FrameDecimator).
             val ranges = selector.filter(provider.availableCameraInfos).firstOrNull()
                 ?.supportedFrameRateRanges.orEmpty().map { it.lower to it.upper }
-            val pal = FrameRatePlan.choose(ranges)
-            palRequested = pal != null
-            Log.i(TAG, "AE fps ranges ${FrameRatePlan.describe(ranges)}; PAL 25p " +
-                if (pal != null) "requested" else "not available")
-            val palRange = pal?.let { Range(it.first, it.second) }
+            Log.i(TAG, "AE fps ranges ${FrameRatePlan.describe(ranges)}; PAL 25p by frame-grid conversion")
 
             preview = Preview.Builder()
                 .setTargetAspectRatio(AspectRatio.RATIO_16_9)
-                .apply { palRange?.let { setTargetFrameRate(it) } }
                 .build()
                 .also { it.setSurfaceProvider(binding.previewView.surfaceProvider) }
 
@@ -287,7 +274,6 @@ class MainActivity : AppCompatActivity() {
                 .setAspectRatio(AspectRatio.RATIO_16_9)
                 .build()
             videoCapture = VideoCapture.Builder(recorder)
-                .apply { palRange?.let { setTargetFrameRate(it) } }
                 .build()
                 .also { it.targetRotation = lastSurfaceRotation }
 

@@ -277,7 +277,8 @@ class Hc90eController(
             main.post {
                 if (!cameraSuspended) return@post
                 clips = found
-                if (clips.isNotEmpty()) loadClip(0, play = false)
+                // Like the tape after recording: cued at the latest scene; rewind goes back.
+                if (clips.isNotEmpty()) loadClip(clips.size - 1, play = false)
                 b.firmwareOsd.showRemaining()
                 main.post(positionTicker)
             }

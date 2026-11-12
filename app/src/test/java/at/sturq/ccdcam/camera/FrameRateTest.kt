@@ -51,4 +51,45 @@ class FrameRateTest {
         m.reset()
         assertNull(m.fps())
     }
+
+    private fun convert(inPeriodNs: Long, seconds: Int): List<Long> {
+        val d = FrameDecimator()
+        val out = ArrayList<Long>()
+        var t = 5_000_000_000L
+        repeat((seconds * 1e9 / inPeriodNs).toInt()) { d.accept(t)?.let(out::add); t += inPeriodNs }
+        return out
+    }
+
+    @Test
+    fun converts30To25ConstantFrameRate() {
+        val out = convert(33_333_333L, 10)
+        assertEquals(250.0, out.size.toDouble(), 1.0)
+        out.zipWithNext { a, b -> assertEquals(40_000_000L, b - a) }
+    }
+
+    @Test
+    fun converts60To25ConstantFrameRate() {
+        val out = convert(16_666_667L, 10)
+        assertEquals(250.0, out.size.toDouble(), 1.0)
+        out.zipWithNext { a, b -> assertEquals(40_000_000L, b - a) }
+    }
+
+    @Test
+    fun outputStaysWithin20msOfCapture() {
+        val d = FrameDecimator()
+        var t = 0L
+        repeat(300) {
+            d.accept(t)?.let { pts -> assertEquals(true, kotlin.math.abs(pts - t) <= 20_000_000L) }
+            t += 33_333_333L
+        }
+    }
+
+    @Test
+    fun cameraGapKeepsTheGrid() {
+        val d = FrameDecimator()
+        val a = d.accept(0L)!!
+        val b = d.accept(500_000_000L)!!
+        assertEquals(0L, (b - a) % 40_000_000L)
+        assertEquals(true, kotlin.math.abs(b - 500_000_000L) <= 20_000_000L)
+    }
 }

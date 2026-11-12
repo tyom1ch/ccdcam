@@ -17,6 +17,7 @@ import android.view.Surface
 import androidx.camera.core.SurfaceOutput
 import androidx.camera.core.SurfaceProcessor
 import androidx.camera.core.SurfaceRequest
+import at.sturq.ccdcam.camera.FrameDecimator
 import at.sturq.ccdcam.camera.FrameRateMeter
 import at.sturq.ccdcam.geometry.EffectGeometry
 import at.sturq.ccdcam.osd.OsdGlRenderer
@@ -40,6 +41,8 @@ class CcdSurfaceProcessor(
     name: String = "CcdProcessor",
     /** Draws [osdQuads] over the picture (video instance only). */
     private val burnsOsd: Boolean = false,
+    /** Output rate converter (video instance: PAL 25 fps CFR from the native camera rate). */
+    private val decimator: FrameDecimator? = null,
 ) : SurfaceProcessor {
 
     private val vertexSrc = context.assets.open("shaders/passthrough.vert")
@@ -129,6 +132,7 @@ class CcdSurfaceProcessor(
             if (released) { request.willNotProvideSurface(); return@post }
             ensureInitialized()
             frameRateMeter.reset()
+            decimator?.reset()
             inputResolutionW = request.resolution.width
             inputResolutionH = request.resolution.height
             // recreate SurfaceTexture for each new input
@@ -191,7 +195,8 @@ class CcdSurfaceProcessor(
             Log.w(TAG, "updateTexImage failed", e)
             return
         }
-        val pts = st.timestamp
+        // Video: keep only the frames on the 25 fps grid, stamped exactly on it (CFR).
+        val pts = if (decimator != null) decimator.accept(st.timestamp) ?: return else st.timestamp
         frameRateMeter.onFrame(pts)
         val frameProfile = profile
         val frameFraming = framing
