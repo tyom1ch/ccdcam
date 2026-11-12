@@ -63,6 +63,9 @@ class SettingsStore(private val prefs: SharedPreferences) {
                 beep = opt(KEY_FW_BEEP, HC90eMenu.BEEP, d.beep),
                 menuRotate = opt(KEY_FW_MENU_ROTATE, HC90eMenu.MENU_ROTATE, d.menuRotate),
                 burnOsd = opt(KEY_FW_BURN_OSD, HC90eMenu.BURN_OSD, d.burnOsd),
+                exposure = opt(KEY_FW_EXPOSURE, HC90eMenu.EXPOSURE, d.exposure),
+                whiteBal = opt(KEY_FW_WHITE_BAL, HC90eMenu.WHITE_BAL, d.whiteBal),
+                fader = opt(KEY_FW_FADER, HC90eMenu.FADER, d.fader),
                 cassette = cassette,
             )
         }
@@ -75,6 +78,9 @@ class SettingsStore(private val prefs: SharedPreferences) {
                 .putString(KEY_FW_BEEP, v.beep)
                 .putString(KEY_FW_MENU_ROTATE, v.menuRotate)
                 .putString(KEY_FW_BURN_OSD, v.burnOsd)
+                .putString(KEY_FW_EXPOSURE, v.exposure)
+                .putString(KEY_FW_WHITE_BAL, v.whiteBal)
+                .putString(KEY_FW_FADER, v.fader)
                 .putString(KEY_FW_TAPE_INSERTED, (v.cassette != null).toString())
                 .putString(KEY_FW_TAPE_USED_SP_MS, (v.cassette?.usedSpMs ?: 0L).toString())
                 .putString(KEY_FW_TAPE_COUNTER_MS, (v.cassette?.counterMs ?: 0L).toString())
@@ -91,6 +97,9 @@ class SettingsStore(private val prefs: SharedPreferences) {
         const val KEY_FW_BEEP = "fw_beep"
         const val KEY_FW_MENU_ROTATE = "fw_menu_rotate"
         const val KEY_FW_BURN_OSD = "fw_burn_osd"
+        const val KEY_FW_EXPOSURE = "fw_exposure"
+        const val KEY_FW_WHITE_BAL = "fw_white_bal"
+        const val KEY_FW_FADER = "fw_fader"
         const val KEY_FW_TAPE_INSERTED = "fw_tape_inserted"
         const val KEY_FW_TAPE_USED_SP_MS = "fw_tape_used_sp_ms"
         const val KEY_FW_TAPE_COUNTER_MS = "fw_tape_counter_ms"

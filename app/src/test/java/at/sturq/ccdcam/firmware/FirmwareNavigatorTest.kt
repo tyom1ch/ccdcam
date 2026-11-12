@@ -124,4 +124,39 @@ class FirmwareNavigatorTest {
         n.lamp = Lamp.PLAY_EDIT
         assertEquals(Screen.Main, n.screen)
     }
+
+    @Test
+    fun spotFocusOpensTheSpotScreenAndEndCloses() {
+        val n = nav()
+        n.openPMenu()
+        n.pMenuSelect(HC90eMenu.SPOT_FOCUS)
+        assertEquals(Screen.Spot(HC90eMenu.SPOT_FOCUS), n.screen)
+        assertTrue(n.isMenuOpen)
+        n.close()
+        assertEquals(Screen.Main, n.screen)
+    }
+
+    @Test
+    fun exposureWhiteBalanceAndFaderAreSettings() {
+        val n = nav()
+        n.openPMenu()
+        n.pMenuSelect(HC90eMenu.EXPOSURE)
+        n.selectOption("+1"); n.ok()
+        assertEquals("+1", n.settings.exposure)
+        n.pMenuSelect(HC90eMenu.FADER)
+        n.selectOption(FirmwareSettings.FADER_WHITE); n.ok()
+        assertEquals(FirmwareSettings.FADER_WHITE, n.settings.fader)
+        val wb = FirmwareSettings().with(HC90eMenu.WHITE_BAL, FirmwareSettings.WB_OUTDOOR)
+        assertEquals(FirmwareSettings.WB_OUTDOOR, wb.whiteBal)
+    }
+
+    @Test
+    fun faderCurve() {
+        assertEquals(1f, Fader.amount(0, fadeIn = true), 1e-6f)
+        assertEquals(0f, Fader.amount(Fader.DURATION_MS, fadeIn = true), 1e-6f)
+        assertEquals(0f, Fader.amount(0, fadeIn = false), 1e-6f)
+        assertEquals(1f, Fader.amount(Fader.DURATION_MS * 2, fadeIn = false), 1e-6f)
+        assertEquals(0.5f, Fader.amount(Fader.DURATION_MS / 2, fadeIn = false), 1e-6f)
+        assertTrue(Fader.isDone(Fader.DURATION_MS))
+    }
 }

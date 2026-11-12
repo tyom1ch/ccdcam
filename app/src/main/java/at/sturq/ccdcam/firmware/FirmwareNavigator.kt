@@ -14,6 +14,9 @@ sealed interface Screen {
     /** MENU drum, item level of [category]. */
     data class MenuItems(val category: Int, val index: Int) : Screen
 
+    /** SPOT FOCUS / SPOT METER: touch the subject on the LCD; AUTO / END. */
+    data class Spot(val itemId: String) : Screen
+
     /** Option screen of [itemId]; [selected] is the highlighted option, [returnTo] the caller. */
     data class Setting(val itemId: String, val selected: String, val returnTo: Screen) : Screen
 }
@@ -161,6 +164,10 @@ class FirmwareNavigator(
         if (item.id == HC90eMenu.END_SEARCH) {
             screen = Screen.Main
             return NavEffect.EndSearch
+        }
+        if (item.id == HC90eMenu.SPOT_FOCUS || item.id == HC90eMenu.SPOT_METER) {
+            screen = Screen.Spot(item.id)
+            return NavEffect.None
         }
         val current = settings.valueOf(item.id) ?: return NavEffect.None
         screen = Screen.Setting(item.id, current, returnTo)

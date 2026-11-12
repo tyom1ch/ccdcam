@@ -37,6 +37,33 @@ object HC90eMenu {
     const val END_SEARCH = "END SEARCH"
     /** App setting (not on the real camcorder): burn the indicators into the recording. */
     const val BURN_OSD = "BURN OSD"
+    const val EXPOSURE = "EXPOSURE"
+    const val WHITE_BAL = "WHITE BAL."
+    const val FADER = "FADER"
+    const val SPOT_FOCUS = "SPOT FOCUS"
+    const val SPOT_METER = "SPOT METER"
+
+    /** Items that open their own screen instead of an option list. */
+    val ACTION_ITEMS = setOf(END_SEARCH, SPOT_FOCUS, SPOT_METER)
+
+    private val CAMERA_LAMPS = setOf(Lamp.TAPE, Lamp.MEMORY)
+
+    private fun cameraSetItem(id: String): MenuItem = when (id) {
+        EXPOSURE -> MenuItem(
+            id, options = opts(FirmwareSettings.EXPOSURE_AUTO, "-2", "-1", "+1", "+2"),
+            lamps = CAMERA_LAMPS, emulated = true,
+        )
+        WHITE_BAL -> MenuItem(
+            id,
+            options = opts(
+                FirmwareSettings.WB_AUTO, FirmwareSettings.WB_ONE_PUSH,
+                FirmwareSettings.WB_INDOOR, FirmwareSettings.WB_OUTDOOR,
+            ),
+            lamps = CAMERA_LAMPS, emulated = true,
+        )
+        SPOT_FOCUS, SPOT_METER -> MenuItem(id, lamps = CAMERA_LAMPS, emulated = true)
+        else -> MenuItem(id)
+    }
 
     // Personal Menu entries that are not menu items.
     const val P_MENU = "MENU"
@@ -54,7 +81,7 @@ object HC90eMenu {
                 "AUTO SHUTTER", "AE SHIFT", "SPOT FOCUS", "FOCUS", "TELE MACRO", "FLASH SET",
                 "SUPER NS", "NS LIGHT", "COLOR SLOW S", "ZEBRA", "SELF-TIMER", "DIGITAL ZOOM",
                 "STEADYSHOT", "PROGRES.REC",
-            ).map { MenuItem(it) },
+            ).map { cameraSetItem(it) },
         ),
         MenuCategory(
             "MEMORY SET", "MEMORY SET",
@@ -68,7 +95,13 @@ object HC90eMenu {
             listOf(
                 "FADER", "SLIDE SHOW", "D. EFFECT", "PICT. EFFECT", "FRAME REC", "SMTH INT.REC",
                 "INT.REC-STL", "DEMO MODE",
-            ).map { MenuItem(it) },
+            ).map {
+                if (it == FADER) MenuItem(
+                    it,
+                    options = opts(FirmwareSettings.FADER_OFF, FirmwareSettings.FADER_BLACK, FirmwareSettings.FADER_WHITE),
+                    lamps = setOf(Lamp.TAPE), emulated = true,
+                ) else MenuItem(it)
+            },
         ),
         MenuCategory(
             "EDIT/PLAY", "EDIT/PLAY",

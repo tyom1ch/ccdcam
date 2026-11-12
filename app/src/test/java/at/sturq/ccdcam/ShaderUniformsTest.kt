@@ -26,7 +26,7 @@ class ShaderUniformsTest {
     /** Uniforms set directly by CcdSurfaceProcessor, not through LookUniforms. */
     private val processorUniforms = setOf(
         "sTexture", "uResolution", "uTime", "uTexMatrix", "uBufferToEffect", "uEffectToBuffer",
-        "uNightShot",
+        "uNightShot", "uFade", "uFadeWhite",
     )
 
     @Test

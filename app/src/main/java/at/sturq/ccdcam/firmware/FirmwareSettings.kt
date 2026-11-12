@@ -13,6 +13,12 @@ data class FirmwareSettings(
     val menuRotate: String = MENU_ROTATE_NORMAL,
     /** BURN OSD: indicators burned into the recorded MP4 (app setting, not a Sony item). */
     val burnOsd: String = BURN_OSD_OFF,
+    /** CAMERA SET > EXPOSURE: AUTO or a fixed EV offset (approximation of the manual bar). */
+    val exposure: String = EXPOSURE_AUTO,
+    /** CAMERA SET > WHITE BAL.: AUTO / ONE PUSH / INDOOR (3200 K) / OUTDOOR (5800 K). */
+    val whiteBal: String = WB_AUTO,
+    /** PICT.APPLI. > FADER: armed fader, cleared after a fade-out. */
+    val fader: String = FADER_OFF,
     val cassette: VirtualCassette? = VirtualCassette.fresh(),
 ) {
     val beepOn: Boolean get() = beep == BEEP_ON
@@ -27,6 +33,9 @@ data class FirmwareSettings(
         HC90eMenu.BEEP -> beep
         HC90eMenu.MENU_ROTATE -> menuRotate
         HC90eMenu.BURN_OSD -> burnOsd
+        HC90eMenu.EXPOSURE -> exposure
+        HC90eMenu.WHITE_BAL -> whiteBal
+        HC90eMenu.FADER -> fader
         else -> null
     }
 
@@ -42,6 +51,9 @@ data class FirmwareSettings(
             HC90eMenu.BEEP -> copy(beep = optionId)
             HC90eMenu.MENU_ROTATE -> copy(menuRotate = optionId)
             HC90eMenu.BURN_OSD -> copy(burnOsd = optionId)
+            HC90eMenu.EXPOSURE -> copy(exposure = optionId)
+            HC90eMenu.WHITE_BAL -> copy(whiteBal = optionId)
+            HC90eMenu.FADER -> copy(fader = optionId)
             else -> throw IllegalArgumentException("$itemId has no stored value")
         }
     }
@@ -60,5 +72,13 @@ data class FirmwareSettings(
         const val MENU_ROTATE_OPPOSITE = "OPPOSITE"
         const val BURN_OSD_OFF = "OFF"
         const val BURN_OSD_ON = "ON"
+        const val EXPOSURE_AUTO = "AUTO"
+        const val WB_AUTO = "AUTO"
+        const val WB_ONE_PUSH = "ONE PUSH"
+        const val WB_INDOOR = "INDOOR"
+        const val WB_OUTDOOR = "OUTDOOR"
+        const val FADER_OFF = "OFF"
+        const val FADER_BLACK = "BLACK FADER"
+        const val FADER_WHITE = "WHITE FADER"
     }
 }

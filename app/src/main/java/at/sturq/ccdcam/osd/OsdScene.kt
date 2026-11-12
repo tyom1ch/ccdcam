@@ -30,6 +30,8 @@ data class OsdIndicators(
     val nightShot: Boolean = false,
     /** Blink phase (1 Hz): REC while recording and the NIGHTSHOT caption are shown only when on. */
     val blinkOn: Boolean = true,
+    /** FADER selected and waiting for START (LCD indicator, blinks). */
+    val faderArmed: Boolean = false,
 ) {
     enum class Transport { STOP, PLAY, PAUSE, REW, FF }
 }
@@ -137,6 +139,10 @@ object OsdScene {
             if (s.blinkOn) {
                 out += OsdItem.Text("NIGHTSHOT", LCD_W / 2f, NIGHTSHOT_ROW, OsdItem.Align.CENTER, WHITE, NIGHTSHOT_SCALE)
             }
+        }
+
+        if (s.faderArmed && s.blinkOn) {
+            out += OsdItem.Text("FADER", LEFT, ROW2 + CELL_H, OsdItem.Align.LEFT, WHITE)
         }
 
         // Date / time row

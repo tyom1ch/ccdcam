@@ -20,6 +20,13 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraEffect
+import androidx.camera.core.FocusMeteringAction
+import androidx.camera.camera2.interop.Camera2CameraControl
+import androidx.camera.camera2.interop.CaptureRequestOptions
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
+import android.hardware.camera2.CameraMetadata
+import android.hardware.camera2.CaptureRequest
+import at.sturq.ccdcam.firmware.FirmwareSettings
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.core.UseCaseGroup
@@ -177,14 +184,22 @@ class MainActivity : AppCompatActivity() {
             override fun setNightShot(on: Boolean) {
                 previewProcessor.nightShot = on
                 videoProcessor.nightShot = on
-                // Half of the positive exposure range: brighter, without blowing highlights
-                // (the shader's soft shoulder does the rest). Reset when off.
-                camera?.let { cam ->
-                    val range = cam.cameraInfo.exposureState.exposureCompensationRange
-                    if (cam.cameraInfo.exposureState.isExposureCompensationSupported) {
-                        cam.cameraControl.setExposureCompensationIndex(if (on) range.upper / 2 else 0)
-                    }
-                }
+                applyCameraSettings()
+            }
+            override fun applyCameraSettings() = this@MainActivity.applyCameraSettings()
+            override fun spot(focus: Boolean, viewX: Float, viewY: Float) {
+                val cam = camera ?: return
+                val point = binding.previewView.meteringPointFactory.createPoint(viewX, viewY)
+                val flags = if (focus) FocusMeteringAction.FLAG_AF else FocusMeteringAction.FLAG_AE
+                cam.cameraControl.startFocusAndMetering(
+                    FocusMeteringAction.Builder(point, flags).disableAutoCancel().build(),
+                )
+            }
+            override fun spotAuto() {
+                camera?.cameraControl?.cancelFocusAndMetering()
+            }
+            override fun setFade(amount: Float, white: Boolean) {
+                for (p in listOf(previewProcessor, videoProcessor)) { p.fade = amount; p.fadeWhite = white }
             }
             override fun setLight(on: Boolean): Boolean {
                 val cam = camera ?: return false
@@ -401,6 +416,7 @@ class MainActivity : AppCompatActivity() {
     @SuppressLint("MissingPermission")
     private fun toggleRecording() {
         recording?.let {
+            if (hc.onStopRequested()) return    // FADER: fades out first, then stops
             stopRecording()
             return
         }
@@ -499,6 +515,43 @@ class MainActivity : AppCompatActivity() {
                 Log.w(TAG, "clip rotation failed", t)
             }
         }
+    }
+
+    /**
+     * EXPOSURE and WHITE BAL. from the firmware settings. NightShot lifts exposure to half the
+     * positive range (soft-shouldered in the shader) and wins over EXPOSURE while on.
+     */
+    private fun applyCameraSettings() {
+        val cam = camera ?: return
+        val s = hc.navigator.settings
+        val es = cam.cameraInfo.exposureState
+        if (es.isExposureCompensationSupported) {
+            val range = es.exposureCompensationRange
+            val index = when {
+                hc.nightShotOn -> range.upper / 2
+                s.exposure == FirmwareSettings.EXPOSURE_AUTO -> 0
+                else -> {
+                    val ev = s.exposure.toIntOrNull() ?: 0
+                    Math.round(ev / es.exposureCompensationStep.toFloat()).coerceIn(range.lower, range.upper)
+                }
+            }
+            cam.cameraControl.setExposureCompensationIndex(index)
+        }
+        applyWhiteBalance(cam, s.whiteBal)
+    }
+
+    /** AUTO / ONE PUSH (AWB locked at the current estimate) / INDOOR / OUTDOOR. */
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun applyWhiteBalance(cam: Camera, wb: String) {
+        val b = CaptureRequestOptions.Builder()
+        val mode = when (wb) {
+            FirmwareSettings.WB_INDOOR -> CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT
+            FirmwareSettings.WB_OUTDOOR -> CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT
+            else -> CameraMetadata.CONTROL_AWB_MODE_AUTO
+        }
+        b.setCaptureRequestOption(CaptureRequest.CONTROL_AWB_MODE, mode)
+        b.setCaptureRequestOption(CaptureRequest.CONTROL_AWB_LOCK, wb == FirmwareSettings.WB_ONE_PUSH)
+        Camera2CameraControl.from(cam.cameraControl).setCaptureRequestOptions(b.build())
     }
 
     private fun stopRecording() {
