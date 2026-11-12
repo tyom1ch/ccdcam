@@ -167,6 +167,45 @@ class EffectGeometryTest {
         }
     }
 
+    /** Burned-in OSD: the LCD band maps upright, undeformed, around the picture. */
+    @Test
+    fun lcdToBufferLandscapeIsTheWholeFrame() {
+        val g = EffectGeometry.compute(1280, 720, 16f / 9f, 0, 4f / 3f, containerAspect = 16f / 9f)
+        assertPoint(0f to 0f, g.lcdToBuffer.map(0f, 0f))
+        assertPoint(1f to 1f, g.lcdToBuffer.map(1f, 1f))
+    }
+
+    @Test
+    fun lcdToBufferInARotatedPortraitVideoBuffer() {
+        // Portrait recording: CameraX delivers 720x1280 pixels already rotated (seen on Pixel),
+        // so the buffer itself is upright.
+        val g = EffectGeometry.compute(720, 1280, 720f / 1280f, 0, 16f / 9f, containerAspect = 16f / 9f)
+        val top = g.lcdToBuffer.map(0.5f, 1f)
+        val bottom = g.lcdToBuffer.map(0.5f, 0f)
+        // 16:9 band across a 9:16 frame: height fraction (9/16)/(16/9) = 0.31640625, centred
+        assertEquals(0.31640625f, top.second - bottom.second, eps)
+        assertEquals(0.5f, (top.second + bottom.second) / 2f, eps)
+    }
+
+    @Test
+    fun lcdIsUprightAndUndeformedForEveryRotation() {
+        for (cw in listOf(0, 90, 180, 270)) {
+            val w = 1920; val h = 1080
+            val g = EffectGeometry.compute(w, h, 16f / 9f, cw, 4f / 3f, containerAspect = 16f / 9f)
+            val o = g.lcdToBuffer.map(0f, 0f)
+            val x = g.lcdToBuffer.map(1f, 0f)
+            val y = g.lcdToBuffer.map(0f, 1f)
+            val lx = hypot((x.first - o.first) * w, (x.second - o.second) * h)
+            val ly = hypot((y.first - o.first) * w, (y.second - o.second) * h)
+            assertEquals("cw=$cw", 16f / 9f, lx / ly, 1e-3f)
+            // the LCD's x axis is the picture's x axis (OSD text runs along picture rows)
+            val px = g.effectToBuffer.map(1f, 0.5f)
+            val p0 = g.effectToBuffer.map(0f, 0.5f)
+            val dot = (x.first - o.first) * (px.first - p0.first) * w * w + (x.second - o.second) * (px.second - p0.second) * h * h
+            assertTrue("cw=$cw same direction", dot > 0f)
+        }
+    }
+
     @Test
     fun inverseRoundTrips() {
         val g = geo(1440, 1080, 16f / 9f, 270, 4f / 3f)

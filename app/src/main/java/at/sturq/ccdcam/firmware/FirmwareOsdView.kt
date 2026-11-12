@@ -9,6 +9,9 @@ import android.graphics.Color
 import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffColorFilter
+import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.Typeface
@@ -19,6 +22,11 @@ import android.view.MotionEvent
 import android.view.View
 import androidx.core.content.res.ResourcesCompat
 import at.sturq.ccdcam.R
+import at.sturq.ccdcam.osd.OsdIndicators
+import at.sturq.ccdcam.osd.OsdItem
+import at.sturq.ccdcam.osd.OsdLayout
+import at.sturq.ccdcam.osd.OsdResources
+import at.sturq.ccdcam.osd.OsdScene
 import java.util.Calendar
 import kotlin.math.abs
 import kotlin.math.cos
@@ -178,7 +186,7 @@ class FirmwareOsdView @JvmOverloads constructor(
         canvas.rotate(fr.canvasAngle)
         canvas.translate(-fr.width / 2f, -fr.height / 2f)
 
-        drawIndicatorRow(canvas, nav, now)
+        indicators(now, forVideo = false)?.let { drawItems(canvas, OsdScene.build(it, forVideo = false)) }
         when (val s = nav.screen) {
             Screen.Main -> drawMain(canvas, nav, now)
             is Screen.PMenu -> drawPMenu(canvas, nav, s)
@@ -186,7 +194,7 @@ class FirmwareOsdView @JvmOverloads constructor(
             is Screen.MenuItems -> drawDrum(canvas, nav, categoryLevel = false, s.index, s.category)
             is Screen.Setting -> drawSetting(canvas, nav, s)
         }
-        message?.let { if (now < messageUntil) drawMessage(canvas, it) else message = null }
+        if (message != null && now >= messageUntil) message = null
         canvas.restore()
 
         // Keep timed elements (date, REMAINING AUTO, messages, warning blink) fresh.
@@ -198,66 +206,75 @@ class FirmwareOsdView @JvmOverloads constructor(
 
     // ================= indicator row (guide p. 26: 1–5) =================
 
-    private fun drawIndicatorRow(c: Canvas, nav: FirmwareNavigator, now: Long) {
-        val t = LcdLayout.OSD_TEXT * lcd.height
-        val base = lcd.top + 0.125f * lcd.height
-        val s = nav.settings
+    // ================= OSD indicator layer (pixel font, shared with the burn-in) =================
 
-        // 1 Remaining battery: icon + "60min"
-        val bx = lcd.left + 0.020f * lcd.width
-        drawBatteryIcon(c, bx, base - t * 0.80f, t * 1.15f, t * 0.70f)
-        val minutes = if (batteryPct >= 0) OsdFormat.batteryMinutes(batteryPct) else 0
-        osdText(c, OsdFormat.minutes(minutes), bx + t * 1.35f, base, t, Color.WHITE, Paint.Align.LEFT)
+    private val osdRes = OsdResources.get(context)
+    private val atlasBitmap = OsdResources.bitmap(osdRes.second)
+    private val atlasPaints = HashMap<Int, Paint>()
+    private val srcRect = Rect()
+    private val dstRect = RectF()
 
-        // 2 Recording mode SP / LP
-        val tapeMode = nav.lamp != Lamp.MEMORY
-        if (tapeMode) drawBoxedLabel(c, s.recMode.label, lcd.left + 0.320f * lcd.width, base, t * 0.62f)
-
-        when (nav.lamp) {
-            Lamp.TAPE, Lamp.MEMORY -> {
-                // 3 STBY / REC
-                val (label, color) = if (recording) "REC" to recRed else "STBY" to stbyGreen
-                if (nav.lamp == Lamp.TAPE) osdText(c, label, lcd.left + 0.590f * lcd.width, base, t, color, Paint.Align.CENTER)
-                // 4 Tape counter
-                val counter = (s.cassette?.counterMs ?: 0L) + if (recording) sceneMs else 0L
-                if (nav.lamp == Lamp.TAPE) {
-                    osdText(c, OsdFormat.tapeCounter(counter), lcd.right - 0.015f * lcd.width, base, t, Color.WHITE, Paint.Align.RIGHT)
-                }
-            }
-            Lamp.PLAY_EDIT -> {
-                drawTransportIndicator(c, lcd.left + 0.630f * lcd.width, base, t)
-                osdText(c, OsdFormat.timeCode(playbackPositionMs), lcd.right - 0.015f * lcd.width, base, t, Color.WHITE, Paint.Align.RIGHT)
-            }
-        }
-
-        // 5 Remaining tape "60min" + cassette (REMAINING: AUTO ≈ 8 s / ON; always while recording)
-        if (nav.lamp != Lamp.MEMORY) {
-            val cassette = s.cassette
-            val warn = cassette == null || cassette.isAtEnd || cassette.isNearEnd(s.recMode)
-            val blinkFast = cassette == null || cassette.isAtEnd
-            val blinkOn = if (warn) (now / (if (blinkFast) 160 else 480)) % 2 == 0L else true
-            val showRemaining = s.remaining == FirmwareSettings.REMAINING_ON || recording || now < remainingUntil
-            val base2 = lcd.top + 0.218f * lcd.height
-            val iconW = t * 1.05f
-            val iconX = lcd.right - 0.015f * lcd.width - iconW
-            if (cassette != null && showRemaining) {
-                osdText(c, OsdFormat.minutes(cassette.remainingMinutes(s.recMode)), iconX - t * 0.25f, base2, t, Color.WHITE, Paint.Align.RIGHT)
-            }
-            if ((showRemaining || warn) && blinkOn) drawCassetteIcon(c, iconX, base2 - t * 0.78f, iconW, t * 0.74f, Color.WHITE)
+    private fun atlasPaint(color: Int) = atlasPaints.getOrPut(color) {
+        // No filtering, no AA: the pixel structure of the font must survive scaling.
+        Paint().apply {
+            isFilterBitmap = false
+            isAntiAlias = false
+            colorFilter = PorterDuffColorFilter(color, PorterDuff.Mode.MULTIPLY)
         }
     }
 
-    private fun drawTransportIndicator(c: Canvas, x: Float, base: Float, t: Float) {
-        val h = t * 0.72f
-        val top = base - h
-        fill.color = Color.WHITE
-        when (transport) {
-            Transport.PLAY -> glyphPlay(c, x, top, h)
-            Transport.PAUSE -> { glyphPlay(c, x, top, h); glyphPause(c, x + h * 1.05f, top, h) }
-            Transport.STOP -> glyphStop(c, x + h * 0.1f, top + h * 0.1f, h * 0.8f)
-            Transport.FF -> { glyphPlay(c, x, top, h); glyphPlay(c, x + h * 0.75f, top, h) }
-            Transport.REW -> { glyphRew(c, x, top, h); glyphRew(c, x + h * 0.75f, top, h) }
+    private fun toUnitsX(x: Float) = (x - lcd.left) / lcd.width * OsdScene.LCD_W
+
+    private fun drawItems(c: Canvas, items: List<OsdItem>) {
+        val sx = lcd.width / OsdScene.LCD_W
+        val sy = lcd.height / OsdScene.LCD_H
+        for (q in OsdLayout.quads(items, osdRes.first, osdRes.second)) {
+            srcRect.set(q.src.x, q.src.y, q.src.x + q.src.w, q.src.y + q.src.h)
+            dstRect.set(lcd.left + q.left * sx, lcd.top + q.top * sy, lcd.left + q.right * sx, lcd.top + q.bottom * sy)
+            c.drawBitmap(atlasBitmap, srcRect, dstRect, atlasPaint(q.color))
         }
+    }
+
+    /**
+     * Indicator state at [now]. The preview follows the LCD rules (date/time ~5 s after power-on,
+     * DATA CODE in playback, REMAINING AUTO window, messages); [forVideo] gives the burned-in
+     * variant: date/time always, no messages.
+     */
+    fun indicators(now: Long, forVideo: Boolean): OsdIndicators? {
+        val nav = navigator ?: return null
+        val s = nav.settings
+        val cassette = s.cassette
+        val warn = cassette == null || cassette.isAtEnd || cassette.isNearEnd(s.recMode)
+        val blinkFast = cassette == null || cassette.isAtEnd
+        val iconBlinkOn = if (warn) (now / (if (blinkFast) 160 else 480)) % 2 == 0L else true
+        val showRemaining = s.remaining == FirmwareSettings.REMAINING_ON || recording || now < remainingUntil
+        val dateTime: Long? = when {
+            forVideo -> System.currentTimeMillis()
+            nav.lamp == Lamp.PLAY_EDIT ->
+                if (s.dataCode == FirmwareSettings.DATA_CODE_DATE_TIME) playbackClipTimeMs else null
+            now < dateTimeUntil -> System.currentTimeMillis()
+            else -> null
+        }
+        return OsdIndicators(
+            lamp = nav.lamp,
+            recording = recording,
+            recMode = s.recMode,
+            counterMs = (cassette?.counterMs ?: 0L) + if (recording) sceneMs else 0L,
+            playbackMs = playbackPositionMs,
+            transport = when (transport) {
+                Transport.STOP -> OsdIndicators.Transport.STOP
+                Transport.PLAY -> OsdIndicators.Transport.PLAY
+                Transport.PAUSE -> OsdIndicators.Transport.PAUSE
+                Transport.REW -> OsdIndicators.Transport.REW
+                Transport.FF -> OsdIndicators.Transport.FF
+            },
+            batteryPct = batteryPct,
+            remainingMin = cassette?.remainingMinutes(s.recMode),
+            showRemaining = showRemaining,
+            cassetteIconOn = (showRemaining || warn) && iconBlinkOn,
+            dateTimeMs = dateTime,
+            message = if (!forVideo && now < messageUntil) message else null,
+        )
     }
 
     // ================= main screen =================
@@ -288,31 +305,6 @@ class FirmwareOsdView @JvmOverloads constructor(
                 pMenuButton(c, nav)
             }
         }
-
-        // Date / time: after power-on (camera), or DATA CODE DATE/TIME during playback.
-        val base = lcd.top + 0.815f * lcd.height
-        if (nav.lamp != Lamp.PLAY_EDIT && now < dateTimeUntil) {
-            drawDateTime(c, System.currentTimeMillis(), base, t)
-        } else if (nav.lamp == Lamp.PLAY_EDIT && nav.settings.dataCode == FirmwareSettings.DATA_CODE_DATE_TIME) {
-            val clip = playbackClipTimeMs
-            if (clip != null) drawDateTime(c, clip, base, t)
-            else {
-                osdText(c, OsdFormat.DATE_UNSET, lcd.left + 0.050f * lcd.width, base, t, Color.WHITE, Paint.Align.LEFT)
-                osdText(c, OsdFormat.CLOCK_UNSET, lcd.right - 0.050f * lcd.width, base, t, Color.WHITE, Paint.Align.RIGHT)
-            }
-        }
-    }
-
-    private fun drawDateTime(c: Canvas, epochMs: Long, base: Float, t: Float) {
-        val cal = Calendar.getInstance().apply { timeInMillis = epochMs }
-        osdText(
-            c, OsdFormat.date(cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH)),
-            lcd.left + 0.050f * lcd.width, base, t, Color.WHITE, Paint.Align.LEFT,
-        )
-        osdText(
-            c, OsdFormat.clock(cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), cal.get(Calendar.SECOND)),
-            lcd.right - 0.050f * lcd.width, base, t, Color.WHITE, Paint.Align.RIGHT,
-        )
     }
 
     private fun pMenuButton(c: Canvas, nav: FirmwareNavigator) {
@@ -327,9 +319,8 @@ class FirmwareOsdView @JvmOverloads constructor(
         val pages = nav.pMenuPageCount
         button(c, b(LcdLayout.PMENU_UP), Style.CYAN, icon = { cv, bx -> doubleChevron(cv, bx, up = true) }) { nav.pMenuPage(-1) }
         button(c, b(LcdLayout.PMENU_DOWN), Style.CYAN, icon = { cv, bx -> doubleChevron(cv, bx, up = false) }) { nav.pMenuPage(1) }
-        val t = LcdLayout.OSD_TEXT * lcd.height
         val upBox = b(LcdLayout.PMENU_UP)
-        osdText(c, "${s.page + 1}/$pages", upBox.centerX, lcd.top + 0.565f * lcd.height, t, Color.WHITE, Paint.Align.CENTER)
+        drawItems(c, listOf(OsdItem.Text("${s.page + 1}/$pages", toUnitsX(upBox.centerX), 0.500f * OsdScene.LCD_H, OsdItem.Align.CENTER, OsdScene.WHITE)))
         button(c, b(LcdLayout.PMENU_CLOSE), Style.BLUE, icon = ::iconClose) { nav.close() }
 
         val entries = nav.pMenuPageEntries(s.page)
@@ -473,11 +464,6 @@ class FirmwareOsdView @JvmOverloads constructor(
         }
     }
 
-    private fun drawMessage(c: Canvas, text: String) {
-        val t = LcdLayout.OSD_TEXT * lcd.height
-        osdText(c, text, lcd.centerX, lcd.top + 0.52f * lcd.height, t, Color.WHITE, Paint.Align.CENTER)
-    }
-
     // ================= primitives =================
 
     private enum class Style { CYAN, BLUE }
@@ -560,21 +546,6 @@ class FirmwareOsdView @JvmOverloads constructor(
         }
     }
 
-    /** OSD text: white (or colour) glyphs with a dark outline, as on the LCD. */
-    private fun osdText(c: Canvas, text: String, x: Float, base: Float, size: Float, color: Int, align: Paint.Align) {
-        textPaint.textSize = size
-        textPaint.textAlign = align
-        textPaint.alpha = 255
-        textPaint.style = Paint.Style.STROKE
-        textPaint.strokeWidth = size * 0.16f
-        textPaint.strokeJoin = Paint.Join.ROUND
-        textPaint.color = outline
-        c.drawText(text, x, base, textPaint)
-        textPaint.style = Paint.Style.FILL
-        textPaint.color = color
-        c.drawText(text, x, base, textPaint)
-    }
-
     private fun plainText(c: Canvas, text: String, x: Float, base: Float, size: Float, color: Int,
                           alpha: Int = 255, align: Paint.Align = Paint.Align.LEFT) {
         textPaint.textSize = size
@@ -586,21 +557,6 @@ class FirmwareOsdView @JvmOverloads constructor(
         textPaint.alpha = 255
     }
 
-    /** "SP" in a small outlined box (guide p. 26, indicator 2). */
-    private fun drawBoxedLabel(c: Canvas, label: String, x: Float, base: Float, size: Float) {
-        textPaint.textSize = size
-        val w = textPaint.measureText(label) + size * 0.5f
-        val h = size * 1.15f
-        val top = base - h
-        stroke.color = outline
-        stroke.strokeWidth = size * 0.30f
-        c.drawRect(x, top, x + w, base, stroke)
-        stroke.color = Color.WHITE
-        stroke.strokeWidth = size * 0.12f
-        c.drawRect(x, top, x + w, base, stroke)
-        osdText(c, label, x + w / 2f, base - h * 0.18f, size, Color.WHITE, Paint.Align.CENTER)
-    }
-
     private fun outlinedPath(c: Canvas, p: Path, color: Int, w: Float) {
         stroke.strokeJoin = Paint.Join.ROUND
         stroke.color = outline
@@ -609,33 +565,6 @@ class FirmwareOsdView @JvmOverloads constructor(
         stroke.color = color
         stroke.strokeWidth = w
         c.drawPath(p, stroke)
-    }
-
-    /** Battery pictogram: body with terminal nub on the left, level bar inside (guide p. 26). */
-    private fun drawBatteryIcon(c: Canvas, x: Float, y: Float, w: Float, h: Float) {
-        val nub = w * 0.10f
-        path.reset()
-        path.addRect(x + nub, y, x + w, y + h, Path.Direction.CW)
-        path.addRect(x, y + h * 0.30f, x + nub, y + h * 0.70f, Path.Direction.CW)
-        outlinedPath(c, path, Color.WHITE, h * 0.10f)
-        val level = if (batteryPct < 0) 0f else (batteryPct / 100f).coerceIn(0f, 1f)
-        fill.color = Color.WHITE
-        val inset = h * 0.20f
-        val innerL = x + nub + inset
-        val innerR = x + w - inset
-        c.drawRect(innerR - (innerR - innerL) * level, y + inset, innerR, y + h - inset, fill)
-    }
-
-    /** Cassette pictogram: rounded body with two reels (guide p. 26, indicator 5). */
-    private fun drawCassetteIcon(c: Canvas, x: Float, y: Float, w: Float, h: Float, color: Int) {
-        path.reset()
-        rf.set(x, y, x + w, y + h)
-        path.addRoundRect(rf, h * 0.12f, h * 0.12f, Path.Direction.CW)
-        val r = h * 0.18f
-        path.addCircle(x + w * 0.33f, y + h * 0.50f, r, Path.Direction.CW)
-        path.addCircle(x + w * 0.67f, y + h * 0.50f, r, Path.Direction.CW)
-        path.moveTo(x + w * 0.33f, y + h * 0.50f + r); path.lineTo(x + w * 0.67f, y + h * 0.50f + r)
-        outlinedPath(c, path, color, h * 0.09f)
     }
 
     private fun iconCassette(c: Canvas, box: Box) {

@@ -18,6 +18,9 @@
 > cassette, PLAY/EDIT). References and what is documented vs approximated:
 > `docs/hc90e-reference.md`, `docs/hc90e-ui-references.md`. Recorded files are CameraX MP4
 > (H.264 + AAC, 16:9), not DV.
+>
+> OSD font: based on **PhoenixVGA 8x14** from *The Ultimate Oldschool PC Font Pack* by VileR
+> (int10h.org), CC BY-SA 4.0, adapted towards the Sony OSD; UI text: Arimo (SIL OFL 1.1).
 
 CCDCam runs the live camera feed through a GLSL fragment shader that fakes the look of a
 90s Sony Handycam / Hi8 / MiniDV: chunky low-res chroma, vertical highlight smear,

@@ -11,9 +11,12 @@ data class FirmwareSettings(
     val remaining: String = REMAINING_AUTO,
     val beep: String = BEEP_ON,
     val menuRotate: String = MENU_ROTATE_NORMAL,
+    /** BURN OSD: indicators burned into the recorded MP4 (app setting, not a Sony item). */
+    val burnOsd: String = BURN_OSD_OFF,
     val cassette: VirtualCassette? = VirtualCassette.fresh(),
 ) {
     val beepOn: Boolean get() = beep == BEEP_ON
+    val burnOsdOn: Boolean get() = burnOsd == BURN_OSD_ON
 
     /** Current value (option id) of a menu item, or null if the item has no stored value. */
     fun valueOf(itemId: String): String? = when (itemId) {
@@ -23,6 +26,7 @@ data class FirmwareSettings(
         HC90eMenu.REMAINING -> remaining
         HC90eMenu.BEEP -> beep
         HC90eMenu.MENU_ROTATE -> menuRotate
+        HC90eMenu.BURN_OSD -> burnOsd
         else -> null
     }
 
@@ -37,6 +41,7 @@ data class FirmwareSettings(
             HC90eMenu.REMAINING -> copy(remaining = optionId)
             HC90eMenu.BEEP -> copy(beep = optionId)
             HC90eMenu.MENU_ROTATE -> copy(menuRotate = optionId)
+            HC90eMenu.BURN_OSD -> copy(burnOsd = optionId)
             else -> throw IllegalArgumentException("$itemId has no stored value")
         }
     }
@@ -53,5 +58,7 @@ data class FirmwareSettings(
         const val BEEP_OFF = "OFF"
         const val MENU_ROTATE_NORMAL = "NORMAL"
         const val MENU_ROTATE_OPPOSITE = "OPPOSITE"
+        const val BURN_OSD_OFF = "OFF"
+        const val BURN_OSD_ON = "ON"
     }
 }

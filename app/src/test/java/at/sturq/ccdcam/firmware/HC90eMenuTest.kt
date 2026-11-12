@@ -23,6 +23,23 @@ class HC90eMenuTest {
     }
 
     @Test
+    fun burnOsdIsAnEmulatedTapeSettingDefaultOff() {
+        val item = HC90eMenu.item(HC90eMenu.BURN_OSD)
+        assertTrue(item.isAvailable(Lamp.TAPE))
+        assertEquals(listOf("OFF", "ON"), item.options.map { it.id })
+        assertEquals("OFF", FirmwareSettings().valueOf(HC90eMenu.BURN_OSD))
+        assertTrue(HC90eMenu.BURN_OSD in HC90eMenu.page(HC90eMenu.pMenuCameraTape, 2))
+        assertEquals(FirmwareSettings.BURN_OSD_ON, FirmwareSettings().with(HC90eMenu.BURN_OSD, "ON").burnOsd)
+    }
+
+    @Test
+    fun recordingFoldersRenamedWithLegacyKept() {
+        assertEquals("Movies/Handycam", Hc90eController.MOVIES_DIR)
+        assertEquals("Pictures/Handycam", Hc90eController.PICTURES_DIR)
+        assertEquals("Movies/CCDCam", Hc90eController.LEGACY_MOVIES_DIR)
+    }
+
+    @Test
     fun superNightShotIsInCameraSet() {
         // HC90E guide p. 36: SUPER NS and NS LIGHT exist on this model.
         val cam = HC90eMenu.categories.first { it.id == "CAMERA SET" }.items.map { it.id }

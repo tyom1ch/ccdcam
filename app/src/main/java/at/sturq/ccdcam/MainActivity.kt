@@ -16,6 +16,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.camera.core.AspectRatio
 import androidx.camera.core.Camera
+import androidx.camera.core.CameraEffect
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.core.UseCaseGroup
@@ -55,8 +56,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var settings: SettingsStore
 
-    private lateinit var ccdProcessor: CcdSurfaceProcessor
-    private lateinit var ccdEffect: CcdEffect
+    /** One processor (and effect) per target: the preview and the recording are separate
+     *  streams, so the burned-in OSD can go into the MP4 only. */
+    private lateinit var previewProcessor: CcdSurfaceProcessor
+    private lateinit var videoProcessor: CcdSurfaceProcessor
+    private lateinit var previewEffect: CcdEffect
+    private lateinit var videoEffect: CcdEffect
 
     /** HC90E firmware display, virtual tape and PLAY/EDIT playback. */
     private lateinit var hc: Hc90eController
@@ -135,9 +140,11 @@ class MainActivity : AppCompatActivity() {
         settings = SettingsStore(this)
         wide = settings.aspect == AspectSetting.RATIO_16_9
 
-        ccdProcessor = CcdSurfaceProcessor(this)
-        ccdProcessor.profile = Profiles.HC90E_PAL
-        ccdEffect = CcdEffect(ccdProcessor)
+        previewProcessor = CcdSurfaceProcessor(this, name = "CcdPreview")
+        videoProcessor = CcdSurfaceProcessor(this, name = "CcdVideo", burnsOsd = true)
+        for (p in listOf(previewProcessor, videoProcessor)) p.profile = Profiles.HC90E_PAL
+        previewEffect = CcdEffect(previewProcessor, CameraEffect.PREVIEW)
+        videoEffect = CcdEffect(videoProcessor, CameraEffect.VIDEO_CAPTURE)
         hc = Hc90eController(this, binding, settings, object : Hc90eController.Host {
             override fun isRecording() = recording != null
             override fun requestStopRecording() = stopRecording()
@@ -147,6 +154,9 @@ class MainActivity : AppCompatActivity() {
                 camera = null
             }
             override fun setPhotoMode(photo: Boolean) = setMode(if (photo) Mode.PHOTO else Mode.VIDEO)
+            override fun setVideoOsd(quads: List<at.sturq.ccdcam.osd.OsdQuad>?) {
+                videoProcessor.osdQuads = quads
+            }
         })
         applyWideLabel()
 
@@ -226,8 +236,8 @@ class MainActivity : AppCompatActivity() {
             cameraProvider = provider
             provider.unbindAll()
 
-            // Preview and video share one 16:9 region so the emulated 4:3/16:9 picture is framed
-            // identically in both; the whole region is shown (FIT_CENTER).
+            // Preview and video are both 16:9 so the emulated 4:3/16:9 picture is framed
+            // identically in both; the whole stream is shown (FIT_CENTER).
             binding.previewView.scaleType = PreviewView.ScaleType.FIT_CENTER
 
             preview = Preview.Builder()
@@ -246,7 +256,8 @@ class MainActivity : AppCompatActivity() {
             val group = UseCaseGroup.Builder()
                 .addUseCase(preview!!)
                 .addUseCase(videoCapture!!)
-                .addEffect(ccdEffect)
+                .addEffect(previewEffect)
+                .addEffect(videoEffect)
                 .build()
 
             val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
@@ -276,19 +287,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Sends the current framing to the processor: shared region (16:9, see bindCamera),
+     * Sends the current framing to both processors: whole 16:9 stream,
      * picture aspect from WIDE SELECT, the emulated 16:9 LCD band, and the CW rotation CameraX
      * uses to make the sensor image upright for the current (or recording) target rotation.
      */
     private fun updateFraming() {
         val cam = camera ?: return
         val rotation = recordingRotation ?: lastSurfaceRotation
-        ccdProcessor.framing = CcdSurfaceProcessor.Framing(
-            regionAspect = 16f / 9f,
+        val framing = CcdSurfaceProcessor.Framing(
+            regionAspect = null,   // each processor's output is its own 16:9 stream
             pictureAspect = if (wide) 16f / 9f else 4f / 3f,
             sensorRotationDegrees = cam.cameraInfo.getSensorRotationDegrees(rotation),
             lcdAspect = 16f / 9f,
         )
+        previewProcessor.framing = framing
+        videoProcessor.framing = framing
     }
 
     private fun capturePhoto() {
@@ -309,7 +322,7 @@ class MainActivity : AppCompatActivity() {
             withContext(Dispatchers.Main) {
                 Toast.makeText(
                     this@MainActivity,
-                    if (uri != null) "Saved to Pictures/CCDCam" else "Save failed",
+                    if (uri != null) "Saved to ${Hc90eController.PICTURES_DIR}" else "Save failed",
                     Toast.LENGTH_SHORT,
                 ).show()
                 binding.shutterBtn.isEnabled = true
@@ -324,7 +337,7 @@ class MainActivity : AppCompatActivity() {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.jpg")
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CCDCam")
+                put(MediaStore.Images.Media.RELATIVE_PATH, Hc90eController.PICTURES_DIR)
             }
         }
         val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)
@@ -352,7 +365,7 @@ class MainActivity : AppCompatActivity() {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.mp4")
             put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                put(MediaStore.Video.Media.RELATIVE_PATH, "Movies/CCDCam")
+                put(MediaStore.Video.Media.RELATIVE_PATH, Hc90eController.MOVIES_DIR)
             }
         }
         val opts = MediaStoreOutputOptions.Builder(
@@ -386,7 +399,7 @@ class MainActivity : AppCompatActivity() {
                         val msg = if (event.hasError())
                             "Save error: ${event.error}"
                         else
-                            "Saved to Movies/CCDCam"
+                            "Saved to ${Hc90eController.MOVIES_DIR}"
                         Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                     }
                 }
@@ -413,7 +426,8 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         hc.release()
-        ccdProcessor.release()
+        previewProcessor.release()
+        videoProcessor.release()
     }
 
     companion object {

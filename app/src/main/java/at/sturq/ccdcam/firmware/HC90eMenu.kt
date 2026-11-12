@@ -35,6 +35,8 @@ object HC90eMenu {
     const val BEEP = "BEEP"
     const val MENU_ROTATE = "MENU ROTATE"
     const val END_SEARCH = "END SEARCH"
+    /** App setting (not on the real camcorder): burn the indicators into the recording. */
+    const val BURN_OSD = "BURN OSD"
 
     // Personal Menu entries that are not menu items.
     const val P_MENU = "MENU"
@@ -102,6 +104,10 @@ object HC90eMenu {
                 MenuItem(BEEP, options = opts(FirmwareSettings.BEEP_ON, FirmwareSettings.BEEP_OFF), emulated = true),
                 MenuItem("DISP OUTPUT"),
                 MenuItem(
+                    BURN_OSD, options = opts(FirmwareSettings.BURN_OSD_OFF, FirmwareSettings.BURN_OSD_ON),
+                    lamps = setOf(Lamp.TAPE), emulated = true,
+                ),
+                MenuItem(
                     MENU_ROTATE,
                     options = opts(FirmwareSettings.MENU_ROTATE_NORMAL, FirmwareSettings.MENU_ROTATE_OPPOSITE),
                     emulated = true,
@@ -140,7 +146,7 @@ object HC90eMenu {
         // page 3 (approximation)
         REC_MODE, AUDIO_MODE,
         REMAINING, BEEP,
-        END_SEARCH, P_MENU_SET_UP,
+        BURN_OSD, P_MENU_SET_UP,
     )
 
     /** PLAY/EDIT Personal Menu. Page 1 is documented (guide p. 34); the rest is an approximation. */
