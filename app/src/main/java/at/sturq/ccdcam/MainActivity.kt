@@ -447,8 +447,11 @@ class MainActivity : AppCompatActivity() {
         ioScope.launch {
             try {
                 contentResolver.openFileDescriptor(uri, "rw")?.use { pfd ->
-                    java.io.FileInputStream(pfd.fileDescriptor).channel.use { rd ->
-                        java.io.FileOutputStream(pfd.fileDescriptor).channel.use { wr ->
+                    // Channels on the pfd's descriptor; the pfd owns and closes it.
+                    val rd = java.io.FileInputStream(pfd.fileDescriptor).channel
+                    val wr = java.io.FileOutputStream(pfd.fileDescriptor).channel
+                    run {
+                        run {
                             val store = object : ByteStore {
                                 override val size get() = rd.size()
                                 override fun read(position: Long, dst: ByteArray) {
