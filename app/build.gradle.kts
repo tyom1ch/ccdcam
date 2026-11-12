@@ -36,6 +36,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            // Same committed key as release: CI runners otherwise generate a fresh debug key
+            // per run, so each CI APK could not update the previous one in place.
+            signingConfig = signingConfigs.getByName("releaseDebugKey")
+        }
         release {
             isMinifyEnabled = false
             isDebuggable = false
