@@ -53,6 +53,10 @@ class CcdSurfaceProcessor(
     private val thread = HandlerThread(name).apply { start() }
     private val osd: OsdGlRenderer? = if (burnsOsd) OsdGlRenderer(context) else null
 
+    /** CW rotation already contained in the current output buffer (sensor -> buffer). */
+    @Volatile var outputRotationCw: Int = 0
+        private set
+
     /** Delivered frame rate of this stream, from camera frame timestamps. */
     val frameRateMeter = FrameRateMeter()
 
@@ -198,6 +202,7 @@ class CcdSurfaceProcessor(
             val sensorToBufferCw = EffectGeometry.rotationCwDegreesOf(m)
             Log.i(TAG, "output size=${output.size} targets=${output.targets} " +
                 "sensorToBuffer=${m.contentToString()} rotationCw=$sensorToBufferCw")
+            outputRotationCw = sensorToBufferCw
             outputs[output] = OutputEntry(
                 eglSurf, output.size.width, output.size.height, sensorToBufferCw,
                 EffectGeometry.isMirrored(m),

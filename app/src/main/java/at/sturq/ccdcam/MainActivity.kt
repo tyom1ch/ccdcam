@@ -34,7 +34,10 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import at.sturq.ccdcam.camera.FrameDecimator
+import at.sturq.ccdcam.camera.ByteStore
 import at.sturq.ccdcam.camera.FrameRatePlan
+import at.sturq.ccdcam.camera.Mp4Rotation
+import at.sturq.ccdcam.geometry.EffectGeometry
 import at.sturq.ccdcam.databinding.ActivityMainBinding
 import at.sturq.ccdcam.firmware.Hc90eController
 import at.sturq.ccdcam.firmware.Lamp
@@ -86,6 +89,8 @@ class MainActivity : AppCompatActivity() {
     /** Rotation the current recording was started with. VideoCapture ignores targetRotation
      *  changes during a recording, so picture-space effects freeze to this value too. */
     private var recordingRotation: Int? = null
+    /** CW display rotation of the clip being recorded; written into the MP4 on Finalize. */
+    private var recordingDisplayCw = 0
     /** CW degrees to apply to PreviewView.bitmap before saving a photo (the bitmap is
      *  always in display orientation; we need to bake the physical rotation in). */
     @Volatile private var photoRotationCw: Int = 0
@@ -113,7 +118,6 @@ class MainActivity : AppCompatActivity() {
                 if (recordingRotation == null) binding.firmwareOsd.deviceRotationCw = photoRotationCw
                 if (rot != lastSurfaceRotation) {
                     lastSurfaceRotation = rot
-                    videoCapture?.targetRotation = rot
                     if (recordingRotation == null) updateFraming()
                 }
             }
@@ -275,7 +279,9 @@ class MainActivity : AppCompatActivity() {
                 .build()
             videoCapture = VideoCapture.Builder(recorder)
                 .build()
-                .also { it.targetRotation = lastSurfaceRotation }
+                // Fixed pipeline orientation: the app, not CameraX, turns picture + OSD for
+                // the way the phone is held and writes the MP4 rotation itself (Mp4Rotation).
+                .also { it.targetRotation = Surface.ROTATION_0 }
 
             val group = UseCaseGroup.Builder()
                 .addUseCase(preview!!)
@@ -395,8 +401,13 @@ class MainActivity : AppCompatActivity() {
             contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI
         ).setContentValues(cv).build()
 
-        vc.targetRotation = lastSurfaceRotation
         recordingRotation = lastSurfaceRotation
+        recordingDisplayCw = camera?.let {
+            EffectGeometry.uprightCwDegrees(
+                it.cameraInfo.getSensorRotationDegrees(lastSurfaceRotation),
+                videoProcessor.outputRotationCw, mirrored = false,
+            )
+        } ?: 0
         updateFraming()
         recording = vc.output
             .prepareRecording(this, opts)
@@ -415,6 +426,7 @@ class MainActivity : AppCompatActivity() {
                             event.recordingStats.recordedDurationNanos / 1_000_000,
                             saved = event.outputResults.outputUri != android.net.Uri.EMPTY,
                         )
+                        if (!event.hasError()) applyClipRotation(event.outputResults.outputUri, recordingDisplayCw)
                         recordingRotation = null
                         updateFraming()
                         binding.firmwareOsd.deviceRotationCw = photoRotationCw   // follow the phone again
@@ -427,6 +439,42 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+    }
+
+    /** Writes the display rotation into the saved MP4 (in place, 36 bytes). */
+    private fun applyClipRotation(uri: android.net.Uri, cwDegrees: Int) {
+        if (uri == android.net.Uri.EMPTY) return
+        ioScope.launch {
+            try {
+                contentResolver.openFileDescriptor(uri, "rw")?.use { pfd ->
+                    java.io.FileInputStream(pfd.fileDescriptor).channel.use { rd ->
+                        java.io.FileOutputStream(pfd.fileDescriptor).channel.use { wr ->
+                            val store = object : ByteStore {
+                                override val size get() = rd.size()
+                                override fun read(position: Long, dst: ByteArray) {
+                                    val buf = java.nio.ByteBuffer.wrap(dst)
+                                    var p = position
+                                    while (buf.hasRemaining()) {
+                                        val n = rd.read(buf, p)
+                                        if (n < 0) throw java.io.EOFException()
+                                        p += n
+                                    }
+                                }
+                                override fun write(position: Long, src: ByteArray) {
+                                    val buf = java.nio.ByteBuffer.wrap(src)
+                                    var p = position
+                                    while (buf.hasRemaining()) p += wr.write(buf, p)
+                                }
+                            }
+                            val ok = Mp4Rotation.setVideoRotation(store, cwDegrees)
+                            Log.i(TAG, "clip rotation $cwDegrees written=$ok")
+                        }
+                    }
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "clip rotation failed", t)
+            }
+        }
     }
 
     private fun stopRecording() {

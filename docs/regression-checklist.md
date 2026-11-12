@@ -146,3 +146,11 @@ dropping, the recording stays at the native rate).
 - [ ] If `PAL 25p`: `ffprobe` shows `r_frame_rate=25/1`, `avg_frame_rate` ≈ 25, video PTS
       deltas 40 ms (no 33/50 ms mix); 5 min clap test still in sync.
 - [ ] Low light: the rate stays 25 (fixed range), exposure gets darker/noisier instead.
+
+## 14. Clip rotation written by the app (stage 7 fix)
+The CameraX video pipeline now stays in one orientation (`targetRotation = ROTATION_0`); the app
+turns picture + OSD for the way the phone is held and writes the MP4 track rotation itself after
+Finalize (`adb logcat -s HC90eMain` prints `clip rotation N written=true`).
+- [ ] Back and front camera × portrait, landscape left, landscape right, upside-down: the clip
+      plays upright in Photos and in PLAY/EDIT, OSD upright, face not sideways or mirrored.
+- [ ] Front camera preview in landscape: picture upright (mirrored like a mirror), OSD upright.
