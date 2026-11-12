@@ -36,8 +36,8 @@ class BeepPlayer(context: Context) {
 
     private fun load(id: Int): FloatArray = res.openRawResource(id).use { WavPcm.parseMono(it.readBytes()).samples }
 
-    /** Per-sound level: the REC start/stop sound sits 6 dB under the other keys. */
-    private val gain = mapOf(Beep.REC_START to 0.5f, Beep.REC_STOP to 0.5f)
+    /** Per-sound level: the REC start/stop sound sits 14 dB under the other keys. */
+    private val gain = mapOf(Beep.REC_START to 0.2f, Beep.REC_STOP to 0.2f)
 
     /** BEEP VOL (speaker only; sounds mixed into a clip keep their level). */
     @Volatile var volume = 1f

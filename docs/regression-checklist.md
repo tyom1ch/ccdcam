@@ -188,4 +188,4 @@ LIGHT is the phone torch and is independent of NightShot.
 - [ ] MENU -> CCD LOOK: each item changes preview and recording the same way (SCANLINES OFF,
       INTERLACE OFF, CCD SMEAR ON on a lamp, COLOR VIVID...); defaults = previous look.
       CAMERA SET -> SHARPNESS SOFT/SHARP. STANDARD SET -> BEEP VOL LOW/MID/HIGH.
-- [ ] REC start/stop sound at half the level of the other keys.
+- [ ] REC start/stop sound at 1/5 of the level of the other keys.
