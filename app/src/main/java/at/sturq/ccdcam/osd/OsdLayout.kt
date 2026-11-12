@@ -14,10 +14,11 @@ data class OsdQuad(
 /** Turns [OsdItem]s into atlas quads. Pure; shared by the Canvas preview and the GL burn-in. */
 object OsdLayout {
 
-    fun quads(items: List<OsdItem>, font: OsdFont, atlas: OsdAtlas): List<OsdQuad> {
+    /** @param scale size multiplier of the OSD pixel (1 = indicator size). */
+    fun quads(items: List<OsdItem>, font: OsdFont, atlas: OsdAtlas, scale: Float = 1f): List<OsdQuad> {
         val out = ArrayList<OsdQuad>()
-        val px = OsdScene.PX
-        val py = OsdScene.PY
+        val px = OsdScene.PX * scale
+        val py = OsdScene.PY * scale
         for (item in items) {
             when (item) {
                 is OsdItem.Text -> {

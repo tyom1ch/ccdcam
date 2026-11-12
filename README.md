@@ -20,7 +20,7 @@
 > (H.264 + AAC, 16:9), not DV.
 >
 > OSD font: based on **PhoenixVGA 8x14** from *The Ultimate Oldschool PC Font Pack* by VileR
-> (int10h.org), CC BY-SA 4.0, adapted towards the Sony OSD; UI text: Arimo (SIL OFL 1.1).
+> (int10h.org), CC BY-SA 4.0, adapted towards the Sony OSD; used for the whole emulated interface.
 
 CCDCam runs the live camera feed through a GLSL fragment shader that fakes the look of a
 90s Sony Handycam / Hi8 / MiniDV: chunky low-res chroma, vertical highlight smear,

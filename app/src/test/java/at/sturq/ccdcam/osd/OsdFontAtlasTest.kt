@@ -71,6 +71,24 @@ class OsdFontAtlasTest {
     }
 
     @Test
+    fun plainAtlasForKeyLabelsHasNoOutline() {
+        val plain = OsdAtlas.build(font, outline = false)
+        assertFalse(plain.pixels.any { it == OsdAtlas.OUTLINE })
+        // same layout as the outlined atlas, so quads are interchangeable
+        assertEquals(atlas.glyphRect('A'), plain.glyphRect('A'))
+        assertEquals(atlas.pixels.count { it == OsdAtlas.FILL }, plain.pixels.count { it == OsdAtlas.FILL })
+    }
+
+    @Test
+    fun scaledLayoutKeepsProportions() {
+        val item = OsdItem.Text("MENU", 0f, 0f, OsdItem.Align.LEFT, OsdScene.WHITE)
+        val a = OsdLayout.quads(listOf(item), font, atlas, 1f).first()
+        val b = OsdLayout.quads(listOf(item), font, atlas, 0.5f).first()
+        assertEquals((a.right - a.left) / 2f, b.right - b.left, 1e-4f)
+        assertEquals((a.bottom - a.top) / 2f, b.bottom - b.top, 1e-4f)
+    }
+
+    @Test
     fun atlasEntriesDoNotOverlapAndHeightIsPowerOfTwo() {
         val rects = (0x20..0x7E).map { atlas.glyphRect(it.toChar()) } + font.sprites.keys.map { atlas.spriteRect(it) }
         for (i in rects.indices) for (j in i + 1 until rects.size) {

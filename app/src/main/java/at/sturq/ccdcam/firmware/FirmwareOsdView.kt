@@ -14,14 +14,11 @@ import android.graphics.PorterDuffColorFilter
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Shader
-import android.graphics.Typeface
 import android.os.BatteryManager
 import android.os.SystemClock
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
-import androidx.core.content.res.ResourcesCompat
-import at.sturq.ccdcam.R
 import at.sturq.ccdcam.osd.OsdIndicators
 import at.sturq.ccdcam.osd.OsdItem
 import at.sturq.ccdcam.osd.OsdLayout
@@ -154,9 +151,6 @@ class FirmwareOsdView @JvmOverloads constructor(
     private val recRed = Color.rgb(0xF0, 0x2A, 0x24)
     private val outline = Color.rgb(0x16, 0x16, 0x16)
 
-    private val font: Typeface = ResourcesCompat.getFont(context, R.font.arimo_bold) ?: Typeface.DEFAULT_BOLD
-
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = font }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE }
     private val path = Path()
@@ -210,6 +204,8 @@ class FirmwareOsdView @JvmOverloads constructor(
 
     private val osdRes = OsdResources.get(context)
     private val atlasBitmap = OsdResources.bitmap(osdRes.second)
+    private val plainAtlas = OsdResources.plainAtlas(context)
+    private val plainBitmap = OsdResources.bitmap(plainAtlas)
     private val atlasPaints = HashMap<Int, Paint>()
     private val srcRect = Rect()
     private val dstRect = RectF()
@@ -225,15 +221,37 @@ class FirmwareOsdView @JvmOverloads constructor(
 
     private fun toUnitsX(x: Float) = (x - lcd.left) / lcd.width * OsdScene.LCD_W
 
-    private fun drawItems(c: Canvas, items: List<OsdItem>) {
+    private fun toUnitsY(y: Float) = (y - lcd.top) / lcd.height * OsdScene.LCD_H
+
+    /**
+     * Draws [items] (LCD units) with the pixel font. [outlined] = OSD indicator style (dark
+     * border, over the picture); false = key/menu label style (plain glyphs).
+     */
+    private fun drawItems(c: Canvas, items: List<OsdItem>, scale: Float = 1f, outlined: Boolean = true) {
         val sx = lcd.width / OsdScene.LCD_W
         val sy = lcd.height / OsdScene.LCD_H
-        for (q in OsdLayout.quads(items, osdRes.first, osdRes.second)) {
+        val atlas = if (outlined) osdRes.second else plainAtlas
+        val bmp = if (outlined) atlasBitmap else plainBitmap
+        for (q in OsdLayout.quads(items, osdRes.first, atlas, scale)) {
             srcRect.set(q.src.x, q.src.y, q.src.x + q.src.w, q.src.y + q.src.h)
             dstRect.set(lcd.left + q.left * sx, lcd.top + q.top * sy, lcd.left + q.right * sx, lcd.top + q.bottom * sy)
-            c.drawBitmap(atlasBitmap, srcRect, dstRect, atlasPaint(q.color))
+            c.drawBitmap(bmp, srcRect, dstRect, atlasPaint(q.color))
         }
     }
+
+    /** Pixel-font text with its caps vertically centred on [centerY] (view px). */
+    private fun pixelText(
+        c: Canvas, text: String, x: Float, centerY: Float, scale: Float, color: Int,
+        align: OsdItem.Align = OsdItem.Align.LEFT, outlined: Boolean = false,
+    ) {
+        // caps occupy glyph rows 2..10 -> centre at row 6.5 of the 14-row cell
+        val top = toUnitsY(centerY) - 6.5f * OsdScene.PY * scale
+        drawItems(c, listOf(OsdItem.Text(text, toUnitsX(x), top, align, color)), scale, outlined)
+    }
+
+    /** Width of [text] in view px at [scale]. */
+    private fun pixelWidth(text: String, scale: Float) =
+        osdRes.first.width(text) * OsdScene.PX * scale * lcd.width / OsdScene.LCD_W
 
     /**
      * Indicator state at [now]. The preview follows the LCD rules (date/time ~5 s after power-on,
@@ -522,39 +540,46 @@ class FirmwareOsdView @JvmOverloads constructor(
 
     private fun darken(c: Int) = Color.rgb(Color.red(c) * 85 / 100, Color.green(c) * 85 / 100, Color.blue(c) * 85 / 100)
 
-    /** One line centred, or two lines left-aligned when the label does not fit (guide p. 34). */
+    /**
+     * Key label in the pixel font: one line centred, or two lines left-aligned when it does not
+     * fit (guide p. 34 figures), shrunk only if even that is too wide.
+     */
     private fun buttonLabel(c: Canvas, box: Box, label: String, color: Int) {
-        var size = LcdLayout.BUTTON_TEXT * lcd.height
-        textPaint.textSize = size
-        textPaint.color = color
-        textPaint.alpha = 255
-        textPaint.style = Paint.Style.FILL
         val pad = box.width * 0.08f
         val avail = box.width - 2 * pad
-        if (textPaint.measureText(label) <= avail || !label.contains(' ')) {
-            while (textPaint.measureText(label) > avail && size > 4f) { size *= 0.94f; textPaint.textSize = size }
-            textPaint.textAlign = Paint.Align.CENTER
-            c.drawText(label, box.centerX, box.centerY + size * 0.36f, textPaint)
+        val unitH = lcd.height / OsdScene.LCD_H
+        val lineH = 12f * OsdScene.PY * unitH                    // caps + leading, scale 1
+        val oneLine = pixelWidth(label, 1f) <= avail || !label.contains(' ')
+        if (oneLine) {
+            val scale = minOf(1f, avail / pixelWidth(label, 1f), box.height * 0.8f / lineH)
+            pixelText(c, label, box.centerX, box.centerY, scale, color, OsdItem.Align.CENTER)
         } else {
             val cut = label.indexOf(' ')
             val lines = listOf(label.substring(0, cut), label.substring(cut + 1))
-            while (lines.any { textPaint.measureText(it) > avail } && size > 4f) { size *= 0.94f; textPaint.textSize = size }
-            textPaint.textAlign = Paint.Align.LEFT
-            val lh = size * 1.02f
-            val y0 = box.centerY - lh / 2f + size * 0.36f
-            lines.forEachIndexed { i, l -> c.drawText(l, box.left + pad, y0 + i * lh, textPaint) }
+            val widest = lines.maxOf { pixelWidth(it, 1f) }
+            val scale = minOf(1f, avail / widest, box.height * 0.9f / (2 * lineH))
+            val step = lineH * scale
+            lines.forEachIndexed { i, l ->
+                pixelText(c, l, box.left + pad, box.centerY + (i - 0.5f) * step, scale, color)
+            }
         }
     }
 
+    /**
+     * Menu text in the pixel font. [base] is the text baseline and [size] the former font size;
+     * the cap height maps to the same visual size (caps ≈ 0.72 × size).
+     */
     private fun plainText(c: Canvas, text: String, x: Float, base: Float, size: Float, color: Int,
                           alpha: Int = 255, align: Paint.Align = Paint.Align.LEFT) {
-        textPaint.textSize = size
-        textPaint.textAlign = align
-        textPaint.style = Paint.Style.FILL
-        textPaint.color = color
-        textPaint.alpha = alpha
-        c.drawText(text, x, base, textPaint)
-        textPaint.alpha = 255
+        val capH = 0.72f * size
+        val scale = capH / (9f * OsdScene.PY * lcd.height / OsdScene.LCD_H)
+        val a = when (align) {
+            Paint.Align.LEFT -> OsdItem.Align.LEFT
+            Paint.Align.CENTER -> OsdItem.Align.CENTER
+            Paint.Align.RIGHT -> OsdItem.Align.RIGHT
+        }
+        val tinted = (alpha.coerceIn(0, 255) shl 24) or (color and 0xFFFFFF)
+        pixelText(c, text, x, base - capH / 2f, scale, tinted, a)
     }
 
     private fun outlinedPath(c: Canvas, p: Path, color: Int, w: Float) {
