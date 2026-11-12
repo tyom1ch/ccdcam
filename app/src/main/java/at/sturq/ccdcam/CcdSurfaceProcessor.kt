@@ -17,6 +17,8 @@ import android.view.Surface
 import androidx.camera.core.SurfaceOutput
 import androidx.camera.core.SurfaceProcessor
 import androidx.camera.core.SurfaceRequest
+import at.sturq.ccdcam.camera.FrameDecimator
+import at.sturq.ccdcam.camera.FrameRateMeter
 import at.sturq.ccdcam.geometry.EffectGeometry
 import at.sturq.ccdcam.osd.OsdGlRenderer
 import at.sturq.ccdcam.osd.OsdQuad
@@ -39,6 +41,8 @@ class CcdSurfaceProcessor(
     name: String = "CcdProcessor",
     /** Draws [osdQuads] over the picture (video instance only). */
     private val burnsOsd: Boolean = false,
+    /** Output rate converter (video instance: PAL 25 fps CFR from the native camera rate). */
+    private val decimator: FrameDecimator? = null,
 ) : SurfaceProcessor {
 
     private val vertexSrc = context.assets.open("shaders/passthrough.vert")
@@ -48,6 +52,13 @@ class CcdSurfaceProcessor(
 
     private val thread = HandlerThread(name).apply { start() }
     private val osd: OsdGlRenderer? = if (burnsOsd) OsdGlRenderer(context) else null
+
+    /** CW rotation already contained in the current output buffer (sensor -> buffer). */
+    @Volatile var outputRotationCw: Int = 0
+        private set
+
+    /** Delivered frame rate of this stream, from camera frame timestamps. */
+    val frameRateMeter = FrameRateMeter()
 
     /** Burned-in OSD quads (LCD units), or null for none. Replaced, never mutated. */
     @Volatile var osdQuads: List<OsdQuad>? = null
@@ -113,6 +124,8 @@ class CcdSurfaceProcessor(
         val height: Int,
         /** CW rotation from sensor to this buffer, from SurfaceOutput.getSensorToBufferTransform. */
         val sensorToBufferCw: Int,
+        /** Buffer is a mirror image (front-camera preview). */
+        val mirrored: Boolean = false,
     ) {
         var cachedFor: Pair<Framing, Int>? = null
         var bufferToEffect: FloatArray? = null
@@ -124,6 +137,8 @@ class CcdSurfaceProcessor(
         handler.post {
             if (released) { request.willNotProvideSurface(); return@post }
             ensureInitialized()
+            frameRateMeter.reset()
+            decimator?.reset()
             inputResolutionW = request.resolution.width
             inputResolutionH = request.resolution.height
             // recreate SurfaceTexture for each new input
@@ -157,10 +172,28 @@ class CcdSurfaceProcessor(
                     output.close()
                 }
             }
+            // One output per target: on a rebind (e.g. camera flip) CameraX hands out the same
+            // PreviewView Surface again before the old output's close event arrives. Release the
+            // old EGL surface first, or EGL refuses a second window surface on that Surface.
+            val stale = outputs.keys.filter { it.targets and output.targets != 0 }
+            if (stale.isNotEmpty()) {
+                EGL14.eglMakeCurrent(eglDisplay, pbufferSurface, pbufferSurface, eglContext)
+                for (old in stale) {
+                    outputs.remove(old)?.let { e ->
+                        try { EGL14.eglDestroySurface(eglDisplay, e.eglSurface) } catch (_: Throwable) {}
+                    }
+                    old.close()
+                }
+            }
             val attribs = intArrayOf(EGL14.EGL_NONE)
-            val eglSurf = EGL14.eglCreateWindowSurface(eglDisplay, eglConfig, outSurface, attribs, 0)
+            var eglSurf = EGL14.eglCreateWindowSurface(eglDisplay, eglConfig, outSurface, attribs, 0)
             if (eglSurf == EGL14.EGL_NO_SURFACE) {
-                Log.e(TAG, "eglCreateWindowSurface failed for output ${output.size}")
+                Log.w(TAG, "eglCreateWindowSurface failed (0x${Integer.toHexString(EGL14.eglGetError())}), retrying once")
+                EGL14.eglMakeCurrent(eglDisplay, pbufferSurface, pbufferSurface, eglContext)
+                eglSurf = EGL14.eglCreateWindowSurface(eglDisplay, eglConfig, outSurface, attribs, 0)
+            }
+            if (eglSurf == EGL14.EGL_NO_SURFACE) {
+                Log.e(TAG, "eglCreateWindowSurface failed for output ${output.size} (0x${Integer.toHexString(EGL14.eglGetError())})")
                 output.close()
                 return@post
             }
@@ -169,8 +202,10 @@ class CcdSurfaceProcessor(
             val sensorToBufferCw = EffectGeometry.rotationCwDegreesOf(m)
             Log.i(TAG, "output size=${output.size} targets=${output.targets} " +
                 "sensorToBuffer=${m.contentToString()} rotationCw=$sensorToBufferCw")
+            outputRotationCw = sensorToBufferCw
             outputs[output] = OutputEntry(
                 eglSurf, output.size.width, output.size.height, sensorToBufferCw,
+                EffectGeometry.isMirrored(m),
             )
         }
     }
@@ -186,7 +221,9 @@ class CcdSurfaceProcessor(
             Log.w(TAG, "updateTexImage failed", e)
             return
         }
-        val pts = st.timestamp
+        // Video: keep only the frames on the 25 fps grid, stamped exactly on it (CFR).
+        val pts = if (decimator != null) decimator.accept(st.timestamp) ?: return else st.timestamp
+        frameRateMeter.onFrame(pts)
         val frameProfile = profile
         val frameFraming = framing
         for ((output, entry) in outputs) {
@@ -240,7 +277,9 @@ class CcdSurfaceProcessor(
 
     /** Recomputes picture-space matrices only when the framing or this output changes. */
     private fun updateGeometry(entry: OutputEntry, fr: Framing) {
-        val uprightCw = ((fr.sensorRotationDegrees - entry.sensorToBufferCw) % 360 + 360) % 360
+        val uprightCw = EffectGeometry.uprightCwDegrees(
+            fr.sensorRotationDegrees, entry.sensorToBufferCw, entry.mirrored,
+        )
         val key = fr to uprightCw
         if (entry.cachedFor == key) return
         val region = fr.regionAspect ?: (entry.width.toFloat() / entry.height)

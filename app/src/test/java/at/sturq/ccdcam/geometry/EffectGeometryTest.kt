@@ -233,6 +233,29 @@ class EffectGeometryTest {
         assertEquals(270, EffectGeometry.rotationCwDegreesOf(m(0f, 1f, -1f, 0f)))
     }
 
+    /** Values logged on Pixel 9 Pro XL. */
+    @Test
+    fun frontPreviewIsMirroredAndTurnsLikeTheBackCamera() {
+        val frontPreview = floatArrayOf(-0f, -0.558f, 1223f, -0.558f, 0f, 1920f, 0f, 0f, 1f)
+        val backPreview = floatArrayOf(0f, -0.47f, 1262f, 0.47f, 0f, 0f, 0f, 0f, 1f)
+        val frontVideo = floatArrayOf(0f, 0.372f, -95f, -0.372f, 0f, 1280f, 0f, 0f, 1f)
+        assertTrue(EffectGeometry.isMirrored(frontPreview))
+        assertTrue(!EffectGeometry.isMirrored(backPreview))
+        assertTrue(!EffectGeometry.isMirrored(frontVideo))
+        val fr = EffectGeometry.rotationCwDegreesOf(frontPreview)   // 270
+        val br = EffectGeometry.rotationCwDegreesOf(backPreview)    // 90
+        // Portrait: sensor rotation front 270, back 90 -> both upright already.
+        assertEquals(0, EffectGeometry.uprightCwDegrees(270, fr, true))
+        assertEquals(0, EffectGeometry.uprightCwDegrees(90, br, false))
+        // Same landscape hold (Surface.ROTATION_90): front sensor rotation 0, back 0.
+        // The display-fixed preview must turn the same way for both cameras.
+        assertEquals(270, EffectGeometry.uprightCwDegrees(0, br, false))
+        assertEquals(270, EffectGeometry.uprightCwDegrees(0, fr, true))
+        // Opposite landscape (ROTATION_270): both sensor rotations 180.
+        assertEquals(90, EffectGeometry.uprightCwDegrees(180, br, false))
+        assertEquals(90, EffectGeometry.uprightCwDegrees(180, fr, true))
+    }
+
     @Test(expected = IllegalArgumentException::class)
     fun rejectsNonQuarterRotation() {
         geo(100, 100, 1f, 45, 1f)

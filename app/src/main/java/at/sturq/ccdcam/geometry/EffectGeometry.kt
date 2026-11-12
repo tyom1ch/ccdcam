@@ -151,6 +151,23 @@ class EffectGeometry(
          * coordinates with y down. Mirroring is not separated out; it only affects the sign of
          * the rotation, not which axis is horizontal.
          */
+        /** True if the matrix (9 android.graphics.Matrix values) contains a reflection. */
+        fun isMirrored(matrixValues: FloatArray): Boolean {
+            require(matrixValues.size >= 6)
+            return matrixValues[0] * matrixValues[4] - matrixValues[1] * matrixValues[3] < 0f
+        }
+
+        /**
+         * CW rotation that makes a buffer upright. [sensorRotationCw] makes the sensor image
+         * upright; the buffer already contains [bufferRotationCw] (from [rotationCwDegreesOf]).
+         * A mirrored buffer (front-camera preview: mirrorX ∘ rotation) needs the opposite sense:
+         * mirroring reverses the direction of every rotation applied after it.
+         */
+        fun uprightCwDegrees(sensorRotationCw: Int, bufferRotationCw: Int, mirrored: Boolean): Int {
+            val d = if (mirrored) bufferRotationCw - sensorRotationCw else sensorRotationCw - bufferRotationCw
+            return (d % 360 + 360) % 360
+        }
+
         fun rotationCwDegreesOf(matrixValues: FloatArray): Int {
             require(matrixValues.size >= 6)
             val scaleX = matrixValues[0]

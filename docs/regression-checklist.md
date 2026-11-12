@@ -136,3 +136,21 @@ per target) — re-check recording, A/V sync and saving (sections 2–5) careful
 - [ ] Counter in the MP4 matches the preview counter (±1 s), REC visible from the first frames.
 - [ ] New files go to `Movies/Handycam` / `Pictures/Handycam`; old `Movies/CCDCam` files untouched
       and still play in PLAY/EDIT, in recording order together with the new ones.
+
+## 13. PAL 25 fps (stage 7 onward)
+`adb logcat -s HC90eMain` prints the camera's AE fps ranges and whether a fixed `[25,25]` was
+requested. The body label under WIDE shows the **measured** rate: `PAL 25p`, or e.g.
+`30p · 25p n/a` when the device has no fixed 25 fps range (then nothing is faked: no frame
+dropping, the recording stays at the native rate).
+- [ ] Note the logged ranges and the label for back and front camera.
+- [ ] If `PAL 25p`: `ffprobe` shows `r_frame_rate=25/1`, `avg_frame_rate` ≈ 25, video PTS
+      deltas 40 ms (no 33/50 ms mix); 5 min clap test still in sync.
+- [ ] Low light: the rate stays 25 (fixed range), exposure gets darker/noisier instead.
+
+## 14. Clip rotation written by the app (stage 7 fix)
+The CameraX video pipeline now stays in one orientation (`targetRotation = ROTATION_0`); the app
+turns picture + OSD for the way the phone is held and writes the MP4 track rotation itself after
+Finalize (`adb logcat -s HC90eMain` prints `clip rotation N written=true`).
+- [ ] Back and front camera × portrait, landscape left, landscape right, upside-down: the clip
+      plays upright in Photos and in PLAY/EDIT, OSD upright, face not sideways or mirrored.
+- [ ] Front camera preview in landscape: picture upright (mirrored like a mirror), OSD upright.
