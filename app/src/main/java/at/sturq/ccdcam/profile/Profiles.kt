@@ -7,7 +7,7 @@ object Profiles {
      *
      * Spatial: the look is sampled on a 720x576 grid (PAL DV active picture, see
      * docs/hc90e-reference.md) with 576 scanlines and a horizontal low-pass, in upright picture
-     * space. The recorded file is CameraX Recorder output (16:9 H.264: 1280x720 landscape,
+     * space, PAL DV 4:2:0 chroma (BT.601). The recorded file is CameraX Recorder output (16:9 H.264: 1280x720 landscape,
      * 720x1280 portrait), NOT a 720x576 file. Noise/grade values are the inherited CCD look;
      * PAL colour, frame rate and interlace come in later stages.
      */
@@ -34,6 +34,7 @@ object Profiles {
             vignetteStrength = 0.35f,
             chromaShift = 0.0003f,
             hBlur = 0.5f,
+            chroma420 = 1f,
         ),
     )
 }
