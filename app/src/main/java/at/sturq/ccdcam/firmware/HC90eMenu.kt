@@ -48,6 +48,20 @@ object HC90eMenu {
     const val ORIG_AUDIO = "ORIG AUDIO"
     const val BURN_SOUND = "BURN SOUND"
     const val TAPE_NOISE = "TAPE NOISE"
+    /** Real CAMERA SET item, emulated as the horizontal detail of the picture. */
+    const val SHARPNESS = "SHARPNESS"
+    /** App settings (CCD LOOK category and BEEP VOL): see LookTweaks. */
+    const val SCANLINES = "SCANLINES"
+    const val INTERLACE = "INTERLACE"
+    const val CCD_NOISE = "CCD NOISE"
+    const val CCD_SMEAR = "CCD SMEAR"
+    const val FLARE = "FLARE"
+    const val VIGNETTE = "VIGNETTE"
+    const val COLOR = "COLOR"
+    const val BEEP_VOL = "BEEP VOL"
+
+    /** Items whose value lives in FirmwareSettings.tweaks (default = first option). */
+    val TWEAKS: List<String> = listOf(SHARPNESS, SCANLINES, INTERLACE, CCD_NOISE, CCD_SMEAR, FLARE, VIGNETTE, COLOR, BEEP_VOL)
 
     /** Items that open their own screen instead of an option list. */
     val ACTION_ITEMS = setOf(END_SEARCH, SPOT_FOCUS, SPOT_METER)
@@ -68,6 +82,10 @@ object HC90eMenu {
             lamps = CAMERA_LAMPS, emulated = true,
         )
         SPOT_FOCUS, SPOT_METER -> MenuItem(id, lamps = CAMERA_LAMPS, emulated = true)
+        SHARPNESS -> MenuItem(
+            id, options = opts(LookTweaks.STD, LookTweaks.SOFT, LookTweaks.SHARP),
+            lamps = CAMERA_LAMPS, emulated = true,
+        )
         SUPER_NS -> MenuItem(
             id, options = opts(FirmwareSettings.SUPER_NS_OFF, FirmwareSettings.SUPER_NS_ON),
             lamps = CAMERA_LAMPS, emulated = true,
@@ -145,6 +163,7 @@ object HC90eMenu {
                 ),
                 MenuItem("REMOTE CTRL"), MenuItem("REC LAMP"),
                 MenuItem(BEEP, options = opts(FirmwareSettings.BEEP_ON, FirmwareSettings.BEEP_OFF), emulated = true),
+                MenuItem(BEEP_VOL, options = opts(LookTweaks.HIGH, LookTweaks.MID, LookTweaks.LOW), emulated = true),
                 MenuItem("DISP OUTPUT"),
                 MenuItem(
                     BURN_OSD, options = opts(FirmwareSettings.BURN_OSD_OFF, FirmwareSettings.BURN_OSD_ON),
@@ -181,6 +200,19 @@ object HC90eMenu {
         MenuCategory(
             "TIME/LANGU.", "TIME/LANGU.",
             listOf("CLOCK SET", "WORLD TIME", "LANGUAGE").map { MenuItem(it) },
+        ),
+        // App settings, not on the HC90E: picture character of the emulated CCD camera.
+        MenuCategory(
+            "CCD LOOK", "CCD LOOK",
+            listOf(
+                MenuItem(SCANLINES, options = opts(LookTweaks.STD, LookTweaks.OFF, LookTweaks.LOW, LookTweaks.HIGH)),
+                MenuItem(INTERLACE, options = opts(LookTweaks.ON, LookTweaks.OFF)),
+                MenuItem(CCD_NOISE, options = opts(LookTweaks.STD, LookTweaks.LOW, LookTweaks.HIGH)),
+                MenuItem(CCD_SMEAR, options = opts(LookTweaks.OFF, LookTweaks.ON)),
+                MenuItem(FLARE, options = opts(LookTweaks.STD, LookTweaks.OFF, LookTweaks.HIGH)),
+                MenuItem(VIGNETTE, options = opts(LookTweaks.STD, LookTweaks.OFF, LookTweaks.HIGH)),
+                MenuItem(COLOR, options = opts(LookTweaks.STD, LookTweaks.VIVID, LookTweaks.WARM, LookTweaks.COOL)),
+            ).map { it.copy(lamps = CAMERA_LAMPS, emulated = true) },
         ),
     )
 

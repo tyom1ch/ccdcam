@@ -31,6 +31,8 @@ data class FirmwareSettings(
     val burnSound: String = OFF,
     /** App setting: tape-mechanism loop mixed under the recording. */
     val tapeNoise: String = ON,
+    /** Values of HC90eMenu.TWEAKS items (missing = first option, the stock look). */
+    val tweaks: Map<String, String> = emptyMap(),
     val cassette: VirtualCassette? = VirtualCassette.fresh(),
 ) {
     val beepOn: Boolean get() = beep == BEEP_ON
@@ -43,6 +45,8 @@ data class FirmwareSettings(
         else -> if (audioMode == AUDIO_16BIT) AudioProfile.DV16_48K else AudioProfile.DV12_32K
     }
     val burnOsdOn: Boolean get() = burnOsd == BURN_OSD_ON
+
+    fun tweak(itemId: String): String = tweaks[itemId] ?: HC90eMenu.item(itemId).options.first().id
 
     /** Current value (option id) of a menu item, or null if the item has no stored value. */
     fun valueOf(itemId: String): String? = when (itemId) {
@@ -61,6 +65,7 @@ data class FirmwareSettings(
         HC90eMenu.ORIG_AUDIO -> origAudio
         HC90eMenu.BURN_SOUND -> burnSound
         HC90eMenu.TAPE_NOISE -> tapeNoise
+        in HC90eMenu.TWEAKS -> tweak(itemId)
         else -> null
     }
 
@@ -84,6 +89,7 @@ data class FirmwareSettings(
             HC90eMenu.ORIG_AUDIO -> copy(origAudio = optionId)
             HC90eMenu.BURN_SOUND -> copy(burnSound = optionId)
             HC90eMenu.TAPE_NOISE -> copy(tapeNoise = optionId)
+            in HC90eMenu.TWEAKS -> copy(tweaks = tweaks + (itemId to optionId))
             else -> throw IllegalArgumentException("$itemId has no stored value")
         }
     }

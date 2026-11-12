@@ -36,10 +36,19 @@ class BeepPlayer(context: Context) {
 
     private fun load(id: Int): FloatArray = res.openRawResource(id).use { WavPcm.parseMono(it.readBytes()).samples }
 
+    /** Per-sound level: the REC start/stop sound sits 6 dB under the other keys. */
+    private val gain = mapOf(Beep.REC_START to 0.5f, Beep.REC_STOP to 0.5f)
+
+    /** BEEP VOL (speaker only; sounds mixed into a clip keep their level). */
+    @Volatile var volume = 1f
+
     /** Mono PCM at [RATE] of [beep]. */
     fun pcm(beep: Beep): FloatArray = cache.getOrPut(beep) {
-        raw[beep]?.let { id -> runCatching { load(id) }.getOrNull() }
+        val x = raw[beep]?.let { id -> runCatching { load(id) }.getOrNull() }
             ?: BeepSynth.render(beep, RATE).let { s -> FloatArray(s.size) { s[it] / 32768f } }
+        val g = gain[beep] ?: 1f
+        if (g != 1f) for (i in x.indices) x[i] *= g
+        x
     }
 
     /** Seamless tape-mechanism loop at [RATE] (res/raw/tape_loop). */
@@ -50,7 +59,8 @@ class BeepPlayer(context: Context) {
             var track: AudioTrack? = null
             try {
                 val f = pcm(beep)
-                val pcm = ShortArray(f.size) { (f[it] * 32767f).roundToInt().coerceIn(-32768, 32767).toShort() }
+                val v = volume
+                val pcm = ShortArray(f.size) { (f[it] * v * 32767f).roundToInt().coerceIn(-32768, 32767).toShort() }
                 track = AudioTrack.Builder()
                     .setAudioAttributes(
                         AudioAttributes.Builder()

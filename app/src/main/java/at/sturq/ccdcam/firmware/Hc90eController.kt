@@ -81,6 +81,7 @@ class Hc90eController(
         active = true
         b.firmwareOsd.navigator = navigator
         b.firmwareOsd.listener = this
+        beeps.volume = LookTweaks.beepVolume(navigator.settings)
         navigator.lamp = Lamp.TAPE
         host.setPhotoMode(false)
         powerOn()
@@ -340,6 +341,7 @@ class Hc90eController(
             NavEffect.None -> Unit
             is NavEffect.SettingsChanged -> {
                 saveSettings(effect.settings)
+                beeps.volume = LookTweaks.beepVolume(effect.settings)
                 host.applyCameraSettings()
                 refreshVideoOsd()
             }

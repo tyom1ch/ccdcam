@@ -10,9 +10,26 @@ class HC90eMenuTest {
     @Test
     fun categoriesInGuideOrderWithGuideLabels() {
         assertEquals(
-            listOf("CAMERA SET", "MEMORY SET", "PICT.APPLI.", "EDIT/PLAY", "STANDARD SET", "TIME/LANGU."),
-            HC90eMenu.categories.map { it.label },
+            listOf("CAMERA SET", "MEMORY SET", "PICT.APPLI.", "EDIT/PLAY", "STANDARD SET", "TIME/LANGU.", "CCD LOOK"),
+            HC90eMenu.categories.map { it.label },  // the app's CCD LOOK comes after the guide's six
         )
+    }
+
+    @Test
+    fun lookTweaksDefaultToTheStockLook() {
+        val d = FirmwareSettings()
+        assertEquals(at.sturq.ccdcam.profile.Profiles.HC90E_PAL, LookTweaks.profile(d))
+        assertEquals(1f, LookTweaks.beepVolume(d))
+        val t = d.with(HC90eMenu.SCANLINES, LookTweaks.OFF).with(HC90eMenu.INTERLACE, LookTweaks.OFF)
+            .with(HC90eMenu.CCD_SMEAR, LookTweaks.ON).with(HC90eMenu.BEEP_VOL, LookTweaks.LOW)
+        val p = LookTweaks.profile(t).shader
+        assertEquals(0f, p.scanlineAmp)
+        assertEquals(0f, p.interlace)
+        assertTrue(p.smearStrength > 0f)
+        assertTrue(LookTweaks.beepVolume(t) < 0.5f)
+        assertEquals(LookTweaks.OFF, t.valueOf(HC90eMenu.SCANLINES))
+        assertEquals(LookTweaks.STD, t.valueOf(HC90eMenu.SHARPNESS))
+        for (id in HC90eMenu.TWEAKS) assertTrue(id, HC90eMenu.item(id).isAvailable(Lamp.TAPE))
     }
 
     @Test

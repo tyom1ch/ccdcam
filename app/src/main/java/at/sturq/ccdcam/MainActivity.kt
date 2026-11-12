@@ -636,6 +636,9 @@ class MainActivity : AppCompatActivity() {
      * positive range (soft-shouldered in the shader) and wins over EXPOSURE while on.
      */
     private fun applyCameraSettings() {
+        // CCD LOOK / SHARPNESS: both processors render the same tuned look.
+        val look = at.sturq.ccdcam.firmware.LookTweaks.profile(hc.navigator.settings)
+        for (p in listOf(previewProcessor, videoProcessor)) p.profile = look
         val cam = camera ?: return
         val s = hc.navigator.settings
         val sns = s.superNs == FirmwareSettings.SUPER_NS_ON

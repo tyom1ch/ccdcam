@@ -71,11 +71,17 @@ class SettingsStore(private val prefs: SharedPreferences) {
                 origAudio = opt(KEY_FW_ORIG_AUDIO, HC90eMenu.ORIG_AUDIO, d.origAudio),
                 burnSound = opt(KEY_FW_BURN_SOUND, HC90eMenu.BURN_SOUND, d.burnSound),
                 tapeNoise = opt(KEY_FW_TAPE_NOISE, HC90eMenu.TAPE_NOISE, d.tapeNoise),
+                tweaks = HC90eMenu.TWEAKS.mapNotNull { id ->
+                    val first = HC90eMenu.item(id).options.first().id
+                    opt(tweakKey(id), id, first).takeIf { it != first }?.let { id to it }
+                }.toMap(),
                 cassette = cassette,
             )
         }
         set(v) {
-            prefs.edit()
+            val e = prefs.edit()
+            for (id in HC90eMenu.TWEAKS) e.putString(tweakKey(id), v.tweak(id))
+            e
                 .putString(KEY_FW_REC_MODE, v.recMode.name)
                 .putString(KEY_FW_AUDIO_MODE, v.audioMode)
                 .putString(KEY_FW_DATA_CODE, v.dataCode)
@@ -114,6 +120,8 @@ class SettingsStore(private val prefs: SharedPreferences) {
         const val KEY_FW_AUDIO_EMU = "fw_audio_emu"
         const val KEY_FW_ORIG_AUDIO = "fw_orig_audio"
         const val KEY_FW_BURN_SOUND = "fw_burn_sound"
+        /** fw_tweak_scanlines, fw_tweak_ccd_noise, ... */
+        fun tweakKey(itemId: String) = "fw_tweak_" + itemId.lowercase().replace(' ', '_')
         const val KEY_FW_TAPE_NOISE = "fw_tape_noise"
         const val KEY_FW_TAPE_INSERTED = "fw_tape_inserted"
         const val KEY_FW_TAPE_USED_SP_MS = "fw_tape_used_sp_ms"

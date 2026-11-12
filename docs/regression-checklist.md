@@ -185,3 +185,7 @@ LIGHT is the phone torch and is independent of NightShot.
       a short fade. During recording the OSD stays fixed.
 - [ ] Touch keys: click on press, declick on release; REC start/stop sound; sounds audible with
       the ringer silent (media volume). Tape noise in the clip is quiet.
+- [ ] MENU -> CCD LOOK: each item changes preview and recording the same way (SCANLINES OFF,
+      INTERLACE OFF, CCD SMEAR ON on a lamp, COLOR VIVID...); defaults = previous look.
+      CAMERA SET -> SHARPNESS SOFT/SHARP. STANDARD SET -> BEEP VOL LOW/MID/HIGH.
+- [ ] REC start/stop sound at half the level of the other keys.

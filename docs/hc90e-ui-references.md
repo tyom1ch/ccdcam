@@ -76,6 +76,16 @@ DATE/TIME / CAMERA DATA · `REMAINING` AUTO (about 8 s) / ON · `BEEP` ON ("a me
 you start/stop recording, or operate the touch panel") / OFF · `MENU ROTATE` NORMAL / OPPOSITE ·
 `A.SHUT OFF` 5 min / NEVER · `GUIDEFRAME` OFF / ON (frame not recorded).
 
+## App settings (not on the HC90E) — Approximation
+- Category `CCD LOOK` after TIME/LANGU.: SCANLINES STD/OFF/LOW/HIGH, INTERLACE ON/OFF,
+  CCD NOISE STD/LOW/HIGH, CCD SMEAR OFF/ON (vertical streaks from bright lights, typical of
+  interline CCDs), FLARE STD/OFF/HIGH, VIGNETTE STD/OFF/HIGH, COLOR STD/VIVID/WARM/COOL.
+  First option = stock look.
+- `SHARPNESS` (a real CAMERA SET item, guide p. 41) is emulated as STD/SOFT/SHARP horizontal
+  detail instead of Sony's bar.
+- STANDARD SET: `BEEP VOL` HIGH/MID/LOW (speaker level of the UI sounds); AUDIO EMU,
+  ORIG AUDIO, BURN OSD, BURN SOUND, TAPE NOISE.
+
 ## DATA CODE — HC90 guide p. 28, p. 56
 - Date/time and camera setting data are recorded automatically and are not shown while
   recording; in playback DATA CODE shows OFF / DATE/TIME / CAMERA DATA. Confirmed (HC90).
