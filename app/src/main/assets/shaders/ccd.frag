@@ -32,6 +32,7 @@ uniform float uScanlineAmp;
 uniform float uVignetteStrength;
 uniform float uChromaShift;
 uniform float uHBlur;          // horizontal low-pass, in CCD cells; 0 = original sampling
+uniform float uNightShot;      // 1 = NightShot look (visual emulation, no IR involved)
 
 // GLSL ES 2.0 needs constant loop bounds, so sample counts stay compile-time constants.
 const int   SMEAR_SAMPLES = 8;
@@ -124,6 +125,15 @@ void main() {
     col = (col - 0.5) * uContrast + 0.5;
     float l = luma(col);
     col = mix(vec3(l), col, uSaturation);
+
+    // NightShot: monochrome with the cold green-teal cast of the HC90's IR picture
+    // (tint sampled from a real NightShot frame, ITmedia 28048), lifted shadows, more noise.
+    // Soft-shoulder curve 1 - e^(-2.5 L): shadows rise, highlights roll off instead of clipping.
+    if (uNightShot > 0.5) {
+        float nl = 1.0 - exp(-2.5 * max(luma(col), 0.0));
+        float nn = (hash(uv * uResolution * 1.7 + uTime * 2.1) - 0.5) * 0.10;
+        col = vec3(0.70, 1.0, 0.96) * clamp(nl + nn, 0.0, 1.0);
+    }
 
     float scan = (1.0 - uScanlineAmp) + uScanlineAmp * sin(uv.y * uLines * 3.14159);
     col *= scan;

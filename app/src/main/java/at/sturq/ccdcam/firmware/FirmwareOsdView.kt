@@ -56,6 +56,10 @@ class FirmwareOsdView @JvmOverloads constructor(
         set(value) { field = value; invalidate() }
 
     // ---- live state pushed by the activity ----
+    /** NightShot body switch (indicator only; the look is in the shader). */
+    var nightShot = false
+        set(value) { field = value; invalidate() }
+
     var recording = false
         set(value) { field = value; invalidate() }
 
@@ -195,7 +199,7 @@ class FirmwareOsdView @JvmOverloads constructor(
         val next = listOf(dateTimeUntil, remainingUntil, messageUntil).filter { it > now }.minOrNull()
         val blinking = nav.settings.cassette?.let { it.isAtEnd || it.isNearEnd(nav.settings.recMode) } ?: true
         removeCallbacks(refresh)
-        if (next != null || blinking || recording) postDelayed(refresh, 250)
+        if (next != null || blinking || recording || nightShot) postDelayed(refresh, 250)
     }
 
     // ================= indicator row (guide p. 26: 1–5) =================
@@ -292,6 +296,8 @@ class FirmwareOsdView @JvmOverloads constructor(
             cassetteIconOn = (showRemaining || warn) && iconBlinkOn,
             dateTimeMs = dateTime,
             message = if (!forVideo && now < messageUntil) message else null,
+            nightShot = nightShot,
+            blinkOn = (now / 500) % 2 == 0L,
         )
     }
 

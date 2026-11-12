@@ -26,6 +26,10 @@ data class OsdIndicators(
     val dateTimeMs: Long?,
     /** Centered warning text, or null. */
     val message: String?,
+    /** NightShot switch on: indicator under the battery. */
+    val nightShot: Boolean = false,
+    /** Blink phase (1 Hz): REC while recording and the NIGHTSHOT caption are shown only when on. */
+    val blinkOn: Boolean = true,
 ) {
     enum class Transport { STOP, PLAY, PAUSE, REW, FF }
 }
@@ -34,7 +38,11 @@ data class OsdIndicators(
 sealed interface OsdItem {
     val color: Int
 
-    data class Text(val text: String, val x: Float, val y: Float, val align: Align, override val color: Int) : OsdItem
+    data class Text(
+        val text: String, val x: Float, val y: Float, val align: Align, override val color: Int,
+        /** Size relative to the indicator text (1 = normal). */
+        val scale: Float = 1f,
+    ) : OsdItem
     data class Sprite(val name: String, val x: Float, val y: Float, val align: Align, override val color: Int) : OsdItem
 
     enum class Align { LEFT, CENTER, RIGHT }
@@ -62,6 +70,9 @@ object OsdScene {
     private const val ROW1 = 18f
     private const val ROW2 = ROW1 + CELL_H
     private const val DATE_ROW = 412f
+    /** Centred NIGHTSHOT caption: cell top so the caps sit on the LCD centre line. */
+    private const val NIGHTSHOT_SCALE = 0.5f
+    private const val NIGHTSHOT_ROW = LCD_H / 2f - 6.5f * PY * NIGHTSHOT_SCALE
     private const val LEFT = 20f
     private const val RIGHT = 1009f
 
@@ -85,8 +96,11 @@ object OsdScene {
         when (s.lamp) {
             Lamp.TAPE -> {
                 // 3 STBY / REC, 4 tape counter
-                out += if (s.recording) OsdItem.Text("REC", 0.590f * LCD_W, ROW1, OsdItem.Align.CENTER, REC_RED)
-                else OsdItem.Text("STBY", 0.590f * LCD_W, ROW1, OsdItem.Align.CENTER, STBY_GREEN)
+                if (s.recording) {
+                    if (s.blinkOn) out += OsdItem.Text("REC", 0.590f * LCD_W, ROW1, OsdItem.Align.CENTER, REC_RED)
+                } else {
+                    out += OsdItem.Text("STBY", 0.590f * LCD_W, ROW1, OsdItem.Align.CENTER, STBY_GREEN)
+                }
                 out += OsdItem.Text(OsdFormat.tapeCounter(s.counterMs), RIGHT, ROW1, OsdItem.Align.RIGHT, WHITE)
             }
             Lamp.PLAY_EDIT -> {
@@ -117,6 +131,14 @@ object OsdScene {
             }
         }
 
+        // NightShot indicator (position: left, under the battery — ITmedia 28035)
+        if (s.nightShot) {
+            out += OsdItem.Sprite("nightshot", LEFT, ROW2, OsdItem.Align.LEFT, WHITE)
+            if (s.blinkOn) {
+                out += OsdItem.Text("NIGHTSHOT", LCD_W / 2f, NIGHTSHOT_ROW, OsdItem.Align.CENTER, WHITE, NIGHTSHOT_SCALE)
+            }
+        }
+
         // Date / time row
         s.dateTimeMs?.let { t ->
             val (date, time) = OsdClock.format(t)
@@ -125,7 +147,9 @@ object OsdScene {
         }
 
         if (!forVideo) {
-            s.message?.let { out += OsdItem.Text(it, LCD_W / 2f, LCD_H * 0.47f, OsdItem.Align.CENTER, WHITE) }
+            // Messages go under the centred NIGHTSHOT caption when it is shown.
+            val msgY = if (s.nightShot) NIGHTSHOT_ROW + CELL_H * 1.2f else LCD_H * 0.47f
+            s.message?.let { out += OsdItem.Text(it, LCD_W / 2f, msgY, OsdItem.Align.CENTER, WHITE) }
         }
         return out
     }

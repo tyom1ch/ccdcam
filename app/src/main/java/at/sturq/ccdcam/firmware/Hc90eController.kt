@@ -45,6 +45,10 @@ class Hc90eController(
         fun setPhotoMode(photo: Boolean)
         /** Indicator quads to burn into the recording, or null for none (BURN OSD OFF). */
         fun setVideoOsd(quads: List<OsdQuad>?)
+        /** NightShot look on/off for both processors (+ exposure lift). */
+        fun setNightShot(on: Boolean)
+        /** Phone torch ("LIGHT"). Returns false if the camera has no flash unit. */
+        fun setLight(on: Boolean): Boolean
     }
 
     val navigator = FirmwareNavigator(store.firmware, Lamp.TAPE)
@@ -142,6 +146,42 @@ class Hc90eController(
     }
 
     /** Phone-side stand-in for the OPEN/EJECT lever (long-press on the TAPE lamp). */
+    // ================= body switches: NIGHTSHOT, LIGHT =================
+
+    var nightShotOn = false
+        private set
+    var lightOn = false
+        private set
+
+    /** NIGHTSHOT switch on the camcorder body: visual emulation only (no IR). */
+    fun toggleNightShot() {
+        nightShotOn = !nightShotOn
+        host.setNightShot(nightShotOn)
+        b.firmwareOsd.nightShot = nightShotOn
+        updateBodyLabels()
+        refreshVideoOsd()
+    }
+
+    /** LIGHT: the phone torch, independent of NightShot. */
+    fun toggleLight() {
+        val want = !lightOn
+        if (host.setLight(want)) lightOn = want
+        else Toast.makeText(context, "No light on this camera", Toast.LENGTH_SHORT).show()
+        updateBodyLabels()
+    }
+
+    /** After a camera rebind the torch is off; re-apply both switches. */
+    fun reapplyBodySwitches() {
+        host.setNightShot(nightShotOn)
+        if (lightOn && !host.setLight(true)) lightOn = false
+        updateBodyLabels()
+    }
+
+    private fun updateBodyLabels() {
+        b.nightShotBtn.setTextColor(color(if (nightShotOn) R.color.hud_accent else R.color.hud_dim))
+        b.lightBtn.setTextColor(color(if (lightOn) R.color.hud_accent else R.color.hud_dim))
+    }
+
     fun ejectOrInsert() {
         if (!active || host.isRecording()) return
         val s = navigator.settings

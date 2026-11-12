@@ -174,6 +174,24 @@ class MainActivity : AppCompatActivity() {
                 camera = null
             }
             override fun setPhotoMode(photo: Boolean) = setMode(if (photo) Mode.PHOTO else Mode.VIDEO)
+            override fun setNightShot(on: Boolean) {
+                previewProcessor.nightShot = on
+                videoProcessor.nightShot = on
+                // Half of the positive exposure range: brighter, without blowing highlights
+                // (the shader's soft shoulder does the rest). Reset when off.
+                camera?.let { cam ->
+                    val range = cam.cameraInfo.exposureState.exposureCompensationRange
+                    if (cam.cameraInfo.exposureState.isExposureCompensationSupported) {
+                        cam.cameraControl.setExposureCompensationIndex(if (on) range.upper / 2 else 0)
+                    }
+                }
+            }
+            override fun setLight(on: Boolean): Boolean {
+                val cam = camera ?: return false
+                if (!cam.cameraInfo.hasFlashUnit()) return false
+                cam.cameraControl.enableTorch(on)
+                return true
+            }
             override fun setVideoOsd(quads: List<at.sturq.ccdcam.osd.OsdQuad>?) {
                 videoProcessor.osdQuads = quads
             }
@@ -188,6 +206,8 @@ class MainActivity : AppCompatActivity() {
             true
         }
         binding.wideSelectBtn.setOnClickListener { toggleWide() }
+        binding.nightShotBtn.setOnClickListener { hc.toggleNightShot() }
+        binding.lightBtn.setOnClickListener { hc.toggleLight() }
         binding.flipBtn.setOnClickListener {
             if (recording != null) {
                 Toast.makeText(this, "Stop recording before flipping", Toast.LENGTH_SHORT).show()
@@ -292,6 +312,7 @@ class MainActivity : AppCompatActivity() {
 
             try {
                 camera = provider.bindToLifecycle(this, selector, group)
+                hc.reapplyBodySwitches()
                 updateFraming()
             } catch (e: Exception) {
                 Toast.makeText(this, "Camera bind failed: ${e.message}", Toast.LENGTH_LONG).show()

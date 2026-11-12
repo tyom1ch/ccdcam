@@ -22,6 +22,8 @@ object OsdLayout {
         for (item in items) {
             when (item) {
                 is OsdItem.Text -> {
+                    val px = px * item.scale
+                    val py = py * item.scale
                     val w = font.width(item.text) * px
                     var pen = start(item.x, w, item.align)
                     for (ch in item.text) {

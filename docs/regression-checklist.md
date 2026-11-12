@@ -154,3 +154,13 @@ Finalize (`adb logcat -s HC90eMain` prints `clip rotation N written=true`).
 - [ ] Back and front camera × portrait, landscape left, landscape right, upside-down: the clip
       plays upright in Photos and in PLAY/EDIT, OSD upright, face not sideways or mirrored.
 - [ ] Front camera preview in landscape: picture upright (mirrored like a mirror), OSD upright.
+
+## 15. NightShot + LIGHT (stage 8)
+NIGHTSHOT and LIGHT are body controls under the LCD. NightShot is a visual emulation only
+(no infrared): green-teal monochrome, more gain and noise, exposure compensation raised.
+LIGHT is the phone torch and is independent of NightShot.
+- [ ] NIGHTSHOT on: preview and recording switch to the NightShot look; moon indicator under
+      the battery on the LCD (and in the MP4 when BURN OSD is ON). Off restores the normal look.
+- [ ] LIGHT toggles the torch on the back camera; front camera: "No light on this camera".
+- [ ] Flip camera / PLAY/EDIT and back: NightShot stays as set, torch comes back if it was on.
+- [ ] Recording, A/V sync and 25p unchanged with NightShot on.
