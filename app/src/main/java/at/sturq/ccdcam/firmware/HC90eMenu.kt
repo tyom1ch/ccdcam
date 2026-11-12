@@ -43,6 +43,9 @@ object HC90eMenu {
     const val SPOT_FOCUS = "SPOT FOCUS"
     const val SPOT_METER = "SPOT METER"
     const val SUPER_NS = "SUPER NS"
+    /** App settings (not Sony items): camcorder sound emulation. */
+    const val AUDIO_EMU = "AUDIO EMU"
+    const val ORIG_AUDIO = "ORIG AUDIO"
 
     /** Items that open their own screen instead of an option list. */
     val ACTION_ITEMS = setOf(END_SEARCH, SPOT_FOCUS, SPOT_METER)
@@ -143,6 +146,15 @@ object HC90eMenu {
                 MenuItem("DISP OUTPUT"),
                 MenuItem(
                     BURN_OSD, options = opts(FirmwareSettings.BURN_OSD_OFF, FirmwareSettings.BURN_OSD_ON),
+                    lamps = setOf(Lamp.TAPE), emulated = true,
+                ),
+                MenuItem(
+                    AUDIO_EMU,
+                    options = opts(FirmwareSettings.AUDIO_EMU_DV, FirmwareSettings.AUDIO_EMU_LOFI, FirmwareSettings.AUDIO_EMU_CLEAN),
+                    lamps = setOf(Lamp.TAPE), emulated = true,
+                ),
+                MenuItem(
+                    ORIG_AUDIO, options = opts(FirmwareSettings.ORIG_AUDIO_REPLACE, FirmwareSettings.ORIG_AUDIO_KEEP),
                     lamps = setOf(Lamp.TAPE), emulated = true,
                 ),
                 MenuItem(

@@ -164,3 +164,13 @@ LIGHT is the phone torch and is independent of NightShot.
 - [ ] LIGHT toggles the torch on the back camera; front camera: "No light on this camera".
 - [ ] Flip camera / PLAY/EDIT and back: NightShot stays as set, torch comes back if it was on.
 - [ ] Recording, A/V sync and 25p unchanged with NightShot on.
+
+## 16. Super NightShot + audio emulator (stage 13)
+- [ ] NIGHTSHOT on + SUPER NS ON: picture renews ~6x per second with trails, brighter and
+      noisier, caption SUPER NIGHTSHOT; recording keeps 25p and sound.
+- [ ] AUDIO EMU DV (default; AUDIO MODE 12BIT -> 32 kHz, 16BIT -> 48 kHz), LO-FI, CLEAN:
+      after STOP the clip is re-saved with the processed sound (`adb logcat -s HC90eMain`:
+      `clip audio ... ok=true`); `ffprobe` shows aac at 32000 / 48000 Hz; video untouched
+      (same frame count, 25 fps), rotation correct.
+- [ ] ORIG AUDIO KEEP: original clip unchanged + `<name>_dv.mp4` with processed sound.
+- [ ] A/V sync after processing (clap test), no clicks at chunk borders.

@@ -40,6 +40,21 @@ class HC90eMenuTest {
     }
 
     @Test
+    fun audioEmulationSettings() {
+        val d = FirmwareSettings()
+        // defaults: DV sound, 12BIT (Sony default) -> 32 kHz profile, original replaced
+        assertEquals(at.sturq.ccdcam.audio.AudioProfile.DV12_32K, d.audioProfile())
+        assertEquals(at.sturq.ccdcam.audio.AudioProfile.DV16_48K,
+            d.with(HC90eMenu.AUDIO_MODE, FirmwareSettings.AUDIO_16BIT).audioProfile())
+        assertEquals(at.sturq.ccdcam.audio.AudioProfile.LOFI,
+            d.with(HC90eMenu.AUDIO_EMU, FirmwareSettings.AUDIO_EMU_LOFI).audioProfile())
+        assertEquals(at.sturq.ccdcam.audio.AudioProfile.CLEAN,
+            d.with(HC90eMenu.AUDIO_EMU, FirmwareSettings.AUDIO_EMU_CLEAN).audioProfile())
+        assertEquals(FirmwareSettings.ORIG_AUDIO_REPLACE, d.origAudio)
+        assertTrue(HC90eMenu.item(HC90eMenu.AUDIO_EMU).isAvailable(Lamp.TAPE))
+    }
+
+    @Test
     fun superNightShotIsInCameraSet() {
         // HC90E guide p. 36: SUPER NS and NS LIGHT exist on this model.
         val cam = HC90eMenu.categories.first { it.id == "CAMERA SET" }.items.map { it.id }

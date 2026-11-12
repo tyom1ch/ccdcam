@@ -27,6 +27,7 @@ import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
 import at.sturq.ccdcam.firmware.FirmwareSettings
+import at.sturq.ccdcam.audio.ClipAudioProcessor
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.core.UseCaseGroup
@@ -474,7 +475,7 @@ class MainActivity : AppCompatActivity() {
                             event.recordingStats.recordedDurationNanos / 1_000_000,
                             saved = event.outputResults.outputUri != android.net.Uri.EMPTY,
                         )
-                        if (!event.hasError()) applyClipRotation(event.outputResults.outputUri, recordingDisplayCw)
+                        if (!event.hasError()) finishClip(event.outputResults.outputUri, recordingDisplayCw)
                         recordingRotation = null
                         updateFraming()
                         binding.firmwareOsd.deviceRotationCw = photoRotationCw   // follow the phone again
@@ -487,6 +488,57 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+    }
+
+    /**
+     * After Finalize: camcorder sound (AUDIO EMU) and the display rotation. The original file is
+     * only replaced after processing succeeded; on failure it keeps its sound and gets the rotation.
+     */
+    private fun finishClip(uri: android.net.Uri, cwDegrees: Int) {
+        if (uri == android.net.Uri.EMPTY) return
+        val s = hc.navigator.settings
+        val profile = s.audioProfile()
+        if (profile.bypass) {
+            applyClipRotation(uri, cwDegrees)
+            return
+        }
+        val keep = s.origAudio == FirmwareSettings.ORIG_AUDIO_KEEP
+        ioScope.launch {
+            val tmp = java.io.File(cacheDir, "hc_audio_${System.nanoTime()}.mp4")
+            try {
+                val ok = ClipAudioProcessor.process(this@MainActivity, uri, tmp, profile, cwDegrees)
+                Log.i(TAG, "clip audio $profile ok=$ok keep=$keep")
+                when {
+                    !ok -> applyClipRotation(uri, cwDegrees)
+                    keep -> {
+                        applyClipRotation(uri, cwDegrees)
+                        saveProcessedCopy(uri, tmp)
+                    }
+                    else -> contentResolver.openOutputStream(uri, "wt")?.use { o ->
+                        tmp.inputStream().use { it.copyTo(o) }
+                    }
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "clip finish failed", t)
+            } finally {
+                tmp.delete()
+            }
+        }
+    }
+
+    /** ORIG AUDIO KEEP: the processed clip is saved next to the original as <name>_dv.mp4. */
+    private fun saveProcessedCopy(original: android.net.Uri, file: java.io.File) {
+        val name = contentResolver.query(original, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)
+            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: "clip.mp4"
+        val cv = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name.removeSuffix(".mp4") + "_dv.mp4")
+            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                put(MediaStore.Video.Media.RELATIVE_PATH, Hc90eController.MOVIES_DIR)
+            }
+        }
+        val dst = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, cv) ?: return
+        contentResolver.openOutputStream(dst)?.use { o -> file.inputStream().use { it.copyTo(o) } }
     }
 
     /** Writes the display rotation into the saved MP4 (in place, 36 bytes). */

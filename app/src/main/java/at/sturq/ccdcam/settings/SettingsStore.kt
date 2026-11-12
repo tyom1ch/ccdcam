@@ -67,6 +67,8 @@ class SettingsStore(private val prefs: SharedPreferences) {
                 whiteBal = opt(KEY_FW_WHITE_BAL, HC90eMenu.WHITE_BAL, d.whiteBal),
                 fader = opt(KEY_FW_FADER, HC90eMenu.FADER, d.fader),
                 superNs = opt(KEY_FW_SUPER_NS, HC90eMenu.SUPER_NS, d.superNs),
+                audioEmu = opt(KEY_FW_AUDIO_EMU, HC90eMenu.AUDIO_EMU, d.audioEmu),
+                origAudio = opt(KEY_FW_ORIG_AUDIO, HC90eMenu.ORIG_AUDIO, d.origAudio),
                 cassette = cassette,
             )
         }
@@ -83,6 +85,8 @@ class SettingsStore(private val prefs: SharedPreferences) {
                 .putString(KEY_FW_WHITE_BAL, v.whiteBal)
                 .putString(KEY_FW_FADER, v.fader)
                 .putString(KEY_FW_SUPER_NS, v.superNs)
+                .putString(KEY_FW_AUDIO_EMU, v.audioEmu)
+                .putString(KEY_FW_ORIG_AUDIO, v.origAudio)
                 .putString(KEY_FW_TAPE_INSERTED, (v.cassette != null).toString())
                 .putString(KEY_FW_TAPE_USED_SP_MS, (v.cassette?.usedSpMs ?: 0L).toString())
                 .putString(KEY_FW_TAPE_COUNTER_MS, (v.cassette?.counterMs ?: 0L).toString())
@@ -103,6 +107,8 @@ class SettingsStore(private val prefs: SharedPreferences) {
         const val KEY_FW_WHITE_BAL = "fw_white_bal"
         const val KEY_FW_FADER = "fw_fader"
         const val KEY_FW_SUPER_NS = "fw_super_ns"
+        const val KEY_FW_AUDIO_EMU = "fw_audio_emu"
+        const val KEY_FW_ORIG_AUDIO = "fw_orig_audio"
         const val KEY_FW_TAPE_INSERTED = "fw_tape_inserted"
         const val KEY_FW_TAPE_USED_SP_MS = "fw_tape_used_sp_ms"
         const val KEY_FW_TAPE_COUNTER_MS = "fw_tape_counter_ms"
