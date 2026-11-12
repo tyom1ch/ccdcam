@@ -110,10 +110,31 @@ class AudioDspTest {
         val retroLow = level(AudioProfile.RETRO, 100.0, 100.0) / level(AudioProfile.RETRO, 1_000.0, 1_000.0)
         val dvLow = level(AudioProfile.DV16_48K, 100.0, 100.0) / level(AudioProfile.DV16_48K, 1_000.0, 1_000.0)
         assertTrue("retro lows $retroLow vs dv $dvLow", retroLow < 0.3 * dvLow)
-        // 7 kHz through a 19 kHz sample-hold: alias at 12 kHz appears
-        val retroAlias = level(AudioProfile.RETRO, 7_000.0, 12_000.0) / level(AudioProfile.RETRO, 7_000.0, 7_000.0)
-        val dvAlias = level(AudioProfile.DV16_48K, 7_000.0, 12_000.0) / level(AudioProfile.DV16_48K, 7_000.0, 7_000.0)
-        assertTrue("retro alias $retroAlias vs dv $dvAlias", retroAlias > 10 * dvAlias && retroAlias > 0.02)
+        // 8-bit crush: a clean 1 kHz tone comes out with much more noise/distortion than DV
+        fun residual(p: AudioProfile): Double {
+            val y = AudioChain(p, 48_000, 1).process(tone(1_000.0))
+            val h = y.copyOfRange(y.size / 2, y.size); val fs = p.outRate.toDouble()
+            var a = 0.0; var b = 0.0
+            for (i in h.indices) { val w = 2 * PI * 1_000 * i / fs; a += h[i] * sin(w); b += h[i] * kotlin.math.cos(w) }
+            a *= 2.0 / h.size; b *= 2.0 / h.size
+            var e = 0.0; var t = 0.0
+            for (i in h.indices) {
+                val w = 2 * PI * 1_000 * i / fs
+                val r = h[i] - a * sin(w) - b * kotlin.math.cos(w); e += r * r; t += h[i].toDouble() * h[i]
+            }
+            return sqrt(e / t)
+        }
+        assertTrue("retro ${residual(AudioProfile.RETRO)} vs dv ${residual(AudioProfile.DV16_48K)}",
+            residual(AudioProfile.RETRO) > 3 * residual(AudioProfile.DV16_48K))
+        // band ends near 9.5 kHz (ADC/DAC filters): 14 kHz much weaker than in DV
+        val mix = FloatArray(48_000) { i ->
+            (0.1 * sin(2 * PI * 1_000 * i / 48_000.0) + 0.1 * sin(2 * PI * 14_000 * i / 48_000.0)).toFloat()
+        }
+        fun hi(p: AudioProfile): Double {
+            val y = AudioChain(p, 48_000, 1).process(mix)
+            return goertzel(y, 14_000.0, p.outRate) / goertzel(y, 1_000.0, p.outRate)
+        }
+        assertTrue("retro ${hi(AudioProfile.RETRO)} vs dv ${hi(AudioProfile.DV16_48K)}", hi(AudioProfile.RETRO) < 0.2 * hi(AudioProfile.DV16_48K))
     }
 
     /** Magnitude of [freq] in the second half of [x] (Goertzel). */

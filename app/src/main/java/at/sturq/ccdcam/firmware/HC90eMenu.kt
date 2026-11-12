@@ -46,7 +46,6 @@ object HC90eMenu {
     /** App settings (not Sony items): camcorder sound emulation. */
     const val AUDIO_EMU = "AUDIO EMU"
     const val ORIG_AUDIO = "ORIG AUDIO"
-    const val BURN_SOUND = "BURN SOUND"
     const val TAPE_NOISE = "TAPE NOISE"
     /** Real CAMERA SET item, emulated as the horizontal detail of the picture. */
     const val SHARPNESS = "SHARPNESS"
@@ -179,10 +178,6 @@ object HC90eMenu {
                 ),
                 MenuItem(
                     ORIG_AUDIO, options = opts(FirmwareSettings.ORIG_AUDIO_REPLACE, FirmwareSettings.ORIG_AUDIO_KEEP),
-                    lamps = setOf(Lamp.TAPE), emulated = true,
-                ),
-                MenuItem(
-                    BURN_SOUND, options = opts(FirmwareSettings.OFF, FirmwareSettings.ON),
                     lamps = setOf(Lamp.TAPE), emulated = true,
                 ),
                 MenuItem(

@@ -230,8 +230,6 @@ class Hc90eController(
 
     fun onRecordingStarted() {
         if (!active) return
-        recSfx.clear()
-        recordingSince = SystemClock.uptimeMillis()
         playBeep(Beep.REC_START)
         if (navigator.settings.fader != FirmwareSettings.FADER_OFF) startFade(fadeInNow = true, thenStop = false)
         b.firmwareOsd.sceneMs = 0
@@ -253,7 +251,6 @@ class Hc90eController(
 
     fun onRecordingFinished(sceneMs: Long, saved: Boolean) {
         if (!active) return
-        recordingSince = -1L
         playBeep(Beep.REC_STOP)
         main.removeCallbacks(fadeTicker)
         fadeThenStop = false
@@ -268,20 +265,10 @@ class Hc90eController(
 
     // ================= sounds =================
 
-    /** Sounds heard during the current recording: (sound, ms after REC), for BURN SOUND. */
-    private val recSfx = ArrayList<Pair<Beep, Long>>()
-    private var recordingSince = -1L
-
     private fun playBeep(sound: Beep) {
         if (sound.melody && !navigator.settings.beepOn) return
         beeps.play(sound)
-        if (recordingSince >= 0) recSfx += sound to (SystemClock.uptimeMillis() - recordingSince)
     }
-
-    /** UI sounds of the last recording (cleared when the next one starts). */
-    fun takeRecordingSfx(): List<Pair<Beep, Long>> = recSfx.toList().also { recSfx.clear() }
-
-    fun soundPcm(beep: Beep): FloatArray = beeps.pcm(beep)
 
     fun tapeLoopPcm(): FloatArray = beeps.tapeLoop()
 

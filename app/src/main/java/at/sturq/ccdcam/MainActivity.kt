@@ -542,9 +542,8 @@ class MainActivity : AppCompatActivity() {
         if (uri == android.net.Uri.EMPTY) return
         val s = hc.navigator.settings
         val profile = s.audioProfile()
-        val events = if (s.burnSound == FirmwareSettings.ON) hc.takeRecordingSfx() else emptyList()
         val tape = s.tapeNoise == FirmwareSettings.ON
-        if (profile.bypass && events.isEmpty() && !tape) {
+        if (profile.bypass && !tape) {
             applyClipRotation(uri, cwDegrees)
             return
         }
@@ -552,11 +551,8 @@ class MainActivity : AppCompatActivity() {
         ioScope.launch {
             val tmp = java.io.File(cacheDir, "hc_audio_${System.nanoTime()}.mp4")
             try {
-                // Effects are 48 kHz PCM, the Recorder's audio rate: offsets in ms * 48 frames.
-                val mixer = SfxMixer(
-                    if (tape) hc.tapeLoopPcm() else null, SfxMixer.LOOP_GAIN,
-                    events.map { (b, ms) -> SfxMixer.Event(hc.soundPcm(b), ms * 48) }, SfxMixer.EVENT_GAIN,
-                )
+                // UI sounds are not mixed in: the phone's microphone already records them.
+                val mixer = SfxMixer(if (tape) hc.tapeLoopPcm() else null, SfxMixer.LOOP_GAIN, emptyList(), 0f)
                 val ok = ClipAudioProcessor.process(this@MainActivity, uri, tmp, profile, cwDegrees, mixer)
                 Log.i(TAG, "clip audio $profile ok=$ok keep=$keep")
                 when {

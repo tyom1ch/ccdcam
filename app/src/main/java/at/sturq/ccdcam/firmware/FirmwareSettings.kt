@@ -27,8 +27,6 @@ data class FirmwareSettings(
     val audioEmu: String = AUDIO_EMU_DV,
     /** App setting: REPLACE the clip's sound, or KEEP the original and save a processed copy. */
     val origAudio: String = ORIG_AUDIO_REPLACE,
-    /** App setting: UI sounds heard while recording are also mixed into the clip. */
-    val burnSound: String = OFF,
     /** App setting: tape-mechanism loop mixed under the recording. */
     val tapeNoise: String = ON,
     /** Values of HC90eMenu.TWEAKS items (missing = first option, the stock look). */
@@ -63,7 +61,6 @@ data class FirmwareSettings(
         HC90eMenu.SUPER_NS -> superNs
         HC90eMenu.AUDIO_EMU -> audioEmu
         HC90eMenu.ORIG_AUDIO -> origAudio
-        HC90eMenu.BURN_SOUND -> burnSound
         HC90eMenu.TAPE_NOISE -> tapeNoise
         in HC90eMenu.TWEAKS -> tweak(itemId)
         else -> null
@@ -87,7 +84,6 @@ data class FirmwareSettings(
             HC90eMenu.SUPER_NS -> copy(superNs = optionId)
             HC90eMenu.AUDIO_EMU -> copy(audioEmu = optionId)
             HC90eMenu.ORIG_AUDIO -> copy(origAudio = optionId)
-            HC90eMenu.BURN_SOUND -> copy(burnSound = optionId)
             HC90eMenu.TAPE_NOISE -> copy(tapeNoise = optionId)
             in HC90eMenu.TWEAKS -> copy(tweaks = tweaks + (itemId to optionId))
             else -> throw IllegalArgumentException("$itemId has no stored value")

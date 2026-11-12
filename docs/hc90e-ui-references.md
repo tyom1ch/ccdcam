@@ -84,7 +84,8 @@ you start/stop recording, or operate the touch panel") / OFF · `MENU ROTATE` NO
 - `SHARPNESS` (a real CAMERA SET item, guide p. 41) is emulated as STD/SOFT/SHARP horizontal
   detail instead of Sony's bar.
 - STANDARD SET: `BEEP VOL` HIGH/MID/LOW (speaker level of the UI sounds); AUDIO EMU,
-  ORIG AUDIO, BURN OSD, BURN SOUND, TAPE NOISE.
+  ORIG AUDIO, BURN OSD, TAPE NOISE. UI sounds are not mixed into clips: the phone microphone
+  records them, like the camcorder mic did.
 
 ## DATA CODE — HC90 guide p. 28, p. 56
 - Date/time and camera setting data are recorded automatically and are not shown while

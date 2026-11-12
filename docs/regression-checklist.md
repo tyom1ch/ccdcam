@@ -174,8 +174,8 @@ LIGHT is the phone torch and is independent of NightShot.
       (same frame count, 25 fps), rotation correct.
 - [ ] ORIG AUDIO KEEP: original clip unchanged + `<name>_dv.mp4` with processed sound.
 - [ ] A/V sync after processing (clap test), no clicks at chunk borders.
-- [ ] AUDIO EMU RETRO: no low end, slightly crunchy/aliased highs (19 kHz sample-hold,
-      ~10-bit crush mixed in), AGC pumping; no clipping.
+- [ ] AUDIO EMU RETRO: no low end, band ends ~9.5 kHz, slightly crunchy (19 kHz crusher with
+      ADC/DAC filters, 8 bits, 40 % wet), AGC pumping; no clipping.
 
 ## 17. DATA CODE, rotation, UI sounds (final)
 - [ ] Record a scene, PLAY/EDIT, P-MENU page 2 -> DATA CODE DATE/TIME: date/time of the frame
