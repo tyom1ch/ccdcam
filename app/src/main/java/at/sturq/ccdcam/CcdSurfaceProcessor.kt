@@ -58,11 +58,14 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
      * @param pictureAspect upright width/height of the emulated picture (4/3 or 16/9)
      * @param sensorRotationDegrees CameraInfo.getSensorRotationDegrees(targetRotation): CW
      *   rotation CameraX applies (pixels and/or MP4 metadata) to make the sensor image upright
+     * @param lcdAspect upright aspect of the emulated LCD band the picture is fitted into
+     *   (16:9 for HC90E), or null for the whole region
      */
     data class Framing(
         val regionAspect: Float,
         val pictureAspect: Float,
         val sensorRotationDegrees: Int,
+        val lcdAspect: Float? = null,
     )
 
     @Volatile var framing: Framing = Framing(16f / 9f, 16f / 9f, 0)
@@ -239,7 +242,7 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
         val key = fr to uprightCw
         if (entry.cachedFor == key) return
         val g = EffectGeometry.compute(
-            entry.width, entry.height, fr.regionAspect, uprightCw, fr.pictureAspect,
+            entry.width, entry.height, fr.regionAspect, uprightCw, fr.pictureAspect, fr.lcdAspect,
         )
         entry.bufferToEffect = g.bufferToEffect.toGlMat3()
         entry.effectToBuffer = g.effectToBuffer.toGlMat3()

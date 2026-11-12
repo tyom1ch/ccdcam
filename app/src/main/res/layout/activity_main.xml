@@ -18,6 +18,17 @@
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
+    <!-- HC90E PLAY/EDIT: recorded scenes played back like a tape. Hidden for CCDCam. -->
+    <VideoView
+        android:id="@+id/playbackView"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="@id/previewView"
+        app:layout_constraintBottom_toBottomOf="@id/previewView"
+        app:layout_constraintStart_toStartOf="@id/previewView"
+        app:layout_constraintEnd_toEndOf="@id/previewView" />
+
     <!-- ============== TOP HUD: REC dot + STBY/REC + timecode + tape mode + battery ============== -->
     <LinearLayout
         android:id="@+id/topHud"
@@ -92,6 +103,7 @@
 
     <!-- viewfinder corner brackets -->
     <ImageView
+        android:id="@+id/bracketTl"
         android:layout_width="22dp" android:layout_height="22dp"
         android:layout_margin="14dp"
         android:src="@drawable/bracket_tl"
@@ -99,6 +111,7 @@
         app:layout_constraintTop_toBottomOf="@id/topHud"
         app:layout_constraintStart_toStartOf="@id/previewView" />
     <ImageView
+        android:id="@+id/bracketTr"
         android:layout_width="22dp" android:layout_height="22dp"
         android:layout_margin="14dp"
         android:src="@drawable/bracket_tr"
@@ -106,6 +119,7 @@
         app:layout_constraintTop_toBottomOf="@id/topHud"
         app:layout_constraintEnd_toEndOf="@id/previewView" />
     <ImageView
+        android:id="@+id/bracketBl"
         android:layout_width="22dp" android:layout_height="22dp"
         android:layout_margin="14dp"
         android:src="@drawable/bracket_bl"
@@ -113,6 +127,7 @@
         app:layout_constraintBottom_toTopOf="@id/bottomHud"
         app:layout_constraintStart_toStartOf="@id/previewView" />
     <ImageView
+        android:id="@+id/bracketBr"
         android:layout_width="22dp" android:layout_height="22dp"
         android:layout_margin="14dp"
         android:src="@drawable/bracket_br"
@@ -202,6 +217,17 @@
             tools:ignore="HardcodedText" />
     </LinearLayout>
 
+    <!-- HC90E touch-panel display (P-MENU, MENU, indicators). Hidden for CCDCam. -->
+    <at.sturq.ccdcam.firmware.FirmwareOsdView
+        android:id="@+id/firmwareOsd"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="@id/previewView"
+        app:layout_constraintBottom_toBottomOf="@id/previewView"
+        app:layout_constraintStart_toStartOf="@id/previewView"
+        app:layout_constraintEnd_toEndOf="@id/previewView" />
+
     <!-- ============== ANDROID-NATIVE CONTROLS BELOW PREVIEW ============== -->
 
     <!-- mode toggle -->
@@ -246,6 +272,23 @@
             android:background="?attr/selectableItemBackground"
             android:text="VIDEO"
             tools:ignore="HardcodedText" />
+
+        <!-- HC90E only: third POWER switch lamp. -->
+        <TextView
+            android:id="@+id/modePlay"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingHorizontal="22dp"
+            android:paddingVertical="6dp"
+            android:fontFamily="monospace"
+            android:textStyle="bold"
+            android:textSize="12sp"
+            android:letterSpacing="0.18"
+            android:textColor="@color/hud_dim"
+            android:background="?attr/selectableItemBackground"
+            android:visibility="gone"
+            android:text="PLAY/EDIT"
+            tools:ignore="HardcodedText" />
     </LinearLayout>
 
     <FrameLayout
@@ -265,6 +308,45 @@
             android:layout_gravity="center"
             android:background="@drawable/shutter_video"
             android:contentDescription="@string/shutter" />
+
+        <!-- HC90E only: camcorder body controls outside the emulated LCD. -->
+        <LinearLayout
+            android:id="@+id/hcControls"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical|start"
+            android:layout_marginStart="24dp"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <!-- WIDE SELECT hardware button (16:9 / 4:3). -->
+            <TextView
+                android:id="@+id/wideSelectBtn"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="8dp"
+                android:fontFamily="monospace"
+                android:textStyle="bold"
+                android:textSize="11sp"
+                android:textColor="@color/hud_accent"
+                android:letterSpacing="0.08"
+                android:background="?attr/selectableItemBackground"
+                android:text="WIDE 16:9"
+                tools:ignore="HardcodedText" />
+
+            <!-- Profile label (long-press switches profile). -->
+            <TextView
+                android:id="@+id/hcProfileTxt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:padding="8dp"
+                android:fontFamily="monospace"
+                android:textSize="10sp"
+                android:textColor="@color/hud_dim"
+                android:letterSpacing="0.1"
+                android:text="HC90E PAL"
+                tools:ignore="HardcodedText" />
+        </LinearLayout>
 
         <ImageButton
             android:id="@+id/flipBtn"

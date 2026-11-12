@@ -86,3 +86,27 @@ round (no stretch); 4:3 shows black bars (pillarbox in landscape, letterbox in p
 - [ ] Front camera: one portrait + one landscape clip, scanlines horizontal in the MP4.
 - [ ] `CCDCAM_DEFAULT`: identical to stage 2, including its original quirks (anamorphic
       squish 0.78, 4:3 rebinding preview only, sensor-aligned scanlines).
+
+## 10. HC90E firmware UI (stage 4 onward)
+References and confidence per element: `docs/hc90e-ui-references.md`. The firmware display is
+phone UI only — it must **not** appear in recorded MP4s or photos (the recordable OSD is a
+later, separate stage).
+
+- [ ] CCDCam profile: no firmware display, HUD/brackets/zoom/date exactly as before, mode row
+      shows PHOTO / VIDEO only.
+- [ ] HC90E: indicator row (battery `NNmin`, `SP`, green `STBY`, counter `0:00:00`), remaining
+      `60min` + cassette for ~8 s after switching on, date/time for ~5 s, END SEARCH and
+      `P-MENU` buttons bottom-right inside the 16:9 LCD band.
+- [ ] `P-MENU`: page `1/3` = MENU, DISP GUIDE / TELE MACRO, EXPOSURE / SPOT FOCUS, FADER;
+      ⇑/⇓ cycle pages; unavailable items grayed; ✕ closes.
+- [ ] `MENU`: category drum → STANDARD SET → REC MODE → LP → OK: indicator shows `LP`,
+      remaining tape shows `90min` on a fresh tape. ↩ discards. BEEP OFF silences beeps.
+- [ ] START: rising beep, `REC` (red), counter runs; STOP: falling beep, counter keeps the
+      total; the MP4 is saved and A/V sync is unchanged (section 4).
+- [ ] Long-press `TAPE`: cassette ejected → `Insert a cassette`, START refused with warning
+      beep; long-press again inserts a fresh DVM60.
+- [ ] `WIDE 16:9/4:3` (below the LCD) switches the picture without rebinding.
+- [ ] `PLAY/EDIT`: camera off, recorded scenes play as one tape: ▶ II, ■, ◀◀ (scene start /
+      previous), ▶▶ (next), time code `h:mm:ss:ff` (25 fps). DATA CODE DATE/TIME shows the
+      scene's date/time. Back to `TAPE`: camera on, recording works.
+- [ ] Pinch-zoom still works outside the touch-panel buttons.

@@ -2,6 +2,10 @@ package at.sturq.ccdcam.settings
 
 import android.content.Context
 import android.content.SharedPreferences
+import at.sturq.ccdcam.firmware.FirmwareSettings
+import at.sturq.ccdcam.firmware.HC90eMenu
+import at.sturq.ccdcam.firmware.RecMode
+import at.sturq.ccdcam.firmware.VirtualCassette
 import at.sturq.ccdcam.profile.CameraProfile
 import at.sturq.ccdcam.profile.Profiles
 
@@ -36,9 +40,65 @@ class SettingsStore(private val prefs: SharedPreferences) {
             prefs.edit().putString(KEY_PROFILE, value.id).apply()
         }
 
+    /**
+     * HC90E firmware settings and the cassette in the camcorder. Stored as strings under
+     * `fw_*` keys; anything missing or invalid falls back to the HC90E defaults.
+     */
+    var firmware: FirmwareSettings
+        get() {
+            val d = FirmwareSettings()
+            fun opt(key: String, itemId: String, def: String): String {
+                val v = prefs.getString(key, null)
+                return if (v != null && HC90eMenu.item(itemId).options.any { it.id == v }) v else def
+            }
+            fun long(key: String): Long? = prefs.getString(key, null)?.toLongOrNull()
+            val recMode = prefs.getString(KEY_FW_REC_MODE, null)
+                ?.let { v -> RecMode.entries.firstOrNull { it.name == v } } ?: d.recMode
+            val cassette = when (prefs.getString(KEY_FW_TAPE_INSERTED, null)) {
+                "false" -> null
+                else -> runCatching {
+                    VirtualCassette(
+                        usedSpMs = long(KEY_FW_TAPE_USED_SP_MS) ?: 0L,
+                        counterMs = long(KEY_FW_TAPE_COUNTER_MS) ?: 0L,
+                    )
+                }.getOrDefault(VirtualCassette.fresh())
+            }
+            return FirmwareSettings(
+                recMode = recMode,
+                audioMode = opt(KEY_FW_AUDIO_MODE, HC90eMenu.AUDIO_MODE, d.audioMode),
+                dataCode = opt(KEY_FW_DATA_CODE, HC90eMenu.DATA_CODE, d.dataCode),
+                remaining = opt(KEY_FW_REMAINING, HC90eMenu.REMAINING, d.remaining),
+                beep = opt(KEY_FW_BEEP, HC90eMenu.BEEP, d.beep),
+                menuRotate = opt(KEY_FW_MENU_ROTATE, HC90eMenu.MENU_ROTATE, d.menuRotate),
+                cassette = cassette,
+            )
+        }
+        set(v) {
+            prefs.edit()
+                .putString(KEY_FW_REC_MODE, v.recMode.name)
+                .putString(KEY_FW_AUDIO_MODE, v.audioMode)
+                .putString(KEY_FW_DATA_CODE, v.dataCode)
+                .putString(KEY_FW_REMAINING, v.remaining)
+                .putString(KEY_FW_BEEP, v.beep)
+                .putString(KEY_FW_MENU_ROTATE, v.menuRotate)
+                .putString(KEY_FW_TAPE_INSERTED, (v.cassette != null).toString())
+                .putString(KEY_FW_TAPE_USED_SP_MS, (v.cassette?.usedSpMs ?: 0L).toString())
+                .putString(KEY_FW_TAPE_COUNTER_MS, (v.cassette?.counterMs ?: 0L).toString())
+                .apply()
+        }
+
     companion object {
         const val PREFS_NAME = "ccdcam"
         const val KEY_ASPECT = "aspect"
         const val KEY_PROFILE = "profile"
+        const val KEY_FW_REC_MODE = "fw_rec_mode"
+        const val KEY_FW_AUDIO_MODE = "fw_audio_mode"
+        const val KEY_FW_DATA_CODE = "fw_data_code"
+        const val KEY_FW_REMAINING = "fw_remaining"
+        const val KEY_FW_BEEP = "fw_beep"
+        const val KEY_FW_MENU_ROTATE = "fw_menu_rotate"
+        const val KEY_FW_TAPE_INSERTED = "fw_tape_inserted"
+        const val KEY_FW_TAPE_USED_SP_MS = "fw_tape_used_sp_ms"
+        const val KEY_FW_TAPE_COUNTER_MS = "fw_tape_counter_ms"
     }
 }

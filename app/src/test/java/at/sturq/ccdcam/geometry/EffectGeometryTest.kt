@@ -130,6 +130,43 @@ class EffectGeometryTest {
         }
     }
 
+    /** HC90E stage 4: the picture is fitted into the emulated 16:9 LCD band first. */
+    @Test
+    fun lcdContainerInPortraitPillarboxes4x3InsideA16x9Band() {
+        val g = EffectGeometry.compute(1920, 1080, 16f / 9f, 90, 4f / 3f, containerAspect = 16f / 9f)
+        // Upright region 9:16 -> 16:9 band covers (9/16)/(16/9) = 0.31640625 of its height,
+        // the 4:3 picture covers 0.75 of the band's width.
+        val top = g.effectToBuffer.map(0.5f, 1f)
+        val bottom = g.effectToBuffer.map(0.5f, 0f)
+        assertEquals(0.31640625f, abs(top.first - bottom.first), eps)
+        val left = g.effectToBuffer.map(0f, 0.5f)
+        val right = g.effectToBuffer.map(1f, 0.5f)
+        assertEquals(0.75f, abs(right.second - left.second), eps)
+    }
+
+    @Test
+    fun lcdContainerChangesNothingInLandscape() {
+        for (p in listOf(16f / 9f, 4f / 3f)) {
+            val a = EffectGeometry.compute(1440, 1080, 16f / 9f, 0, p)
+            val b = EffectGeometry.compute(1440, 1080, 16f / 9f, 0, p, containerAspect = 16f / 9f)
+            assertEquals(a.effectToBuffer.toGlMat3().toList(), b.effectToBuffer.toGlMat3().toList())
+        }
+    }
+
+    @Test
+    fun noDeformationWithLcdContainer() {
+        for (cw in listOf(0, 90, 180, 270)) for (p in listOf(16f / 9f, 4f / 3f)) {
+            val w = 1440; val h = 1080
+            val g = EffectGeometry.compute(w, h, 16f / 9f, cw, p, containerAspect = 16f / 9f)
+            val o = g.effectToBuffer.map(0f, 0f)
+            val x = g.effectToBuffer.map(1f, 0f)
+            val y = g.effectToBuffer.map(0f, 1f)
+            val lx = hypot((x.first - o.first) * w, (x.second - o.second) * h)
+            val ly = hypot((y.first - o.first) * w, (y.second - o.second) * h)
+            assertEquals("cw=$cw p=$p", p, lx / ly, 1e-3f)
+        }
+    }
+
     @Test
     fun inverseRoundTrips() {
         val g = geo(1440, 1080, 16f / 9f, 270, 4f / 3f)
