@@ -33,8 +33,10 @@ class AudioDspTest {
     @Test
     fun agcRaisesQuietSignalsWithinItsLimit() {
         val agc = Agc(48_000, -20f, 18f, 50f, 1_500f)
-        val quiet = sine(1_000.0, 48_000, 4.0, amp = 0.01f).map { agc.process(it) }.toFloatArray()
-        val gainDb = 20 * kotlin.math.log10(rms(quiet) / rms(sine(1_000.0, 48_000, 4.0, amp = 0.01f)))
+        // Camcorder AGC is slow (1.5 s release): measure after it settled (last quarter of 12 s).
+        val inp = sine(1_000.0, 48_000, 12.0, amp = 0.01f)
+        val quiet = inp.map { agc.process(it) }.toFloatArray()
+        val gainDb = 20 * kotlin.math.log10(rms(quiet, quiet.size * 3 / 4) / rms(inp, inp.size * 3 / 4))
         assertTrue("gain $gainDb", gainDb > 6f && gainDb <= 18.5f)
     }
 
