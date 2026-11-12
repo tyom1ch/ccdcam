@@ -34,6 +34,8 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import at.sturq.ccdcam.databinding.ActivityMainBinding
+import at.sturq.ccdcam.firmware.Hc90eController
+import at.sturq.ccdcam.firmware.Lamp
 import at.sturq.ccdcam.profile.CameraProfile
 import at.sturq.ccdcam.profile.EffectSpace
 import at.sturq.ccdcam.profile.Profiles
@@ -64,6 +66,9 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var ccdProcessor: CcdSurfaceProcessor
     private lateinit var ccdEffect: CcdEffect
+
+    /** HC90E firmware display/tape/playback; inactive (and invisible) for CCDCam. */
+    private lateinit var hc: Hc90eController
 
     private var cameraProvider: ProcessCameraProvider? = null
     private var camera: Camera? = null
@@ -164,7 +169,28 @@ class MainActivity : AppCompatActivity() {
 
         ccdProcessor = CcdSurfaceProcessor(this)
         ccdEffect = CcdEffect(ccdProcessor)
+        hc = Hc90eController(this, binding, settings, object : Hc90eController.Host {
+            override fun isRecording() = recording != null
+            override fun requestStopRecording() = stopRecording()
+            override fun cameraOn() = bindCamera()
+            override fun cameraOff() {
+                cameraProvider?.unbindAll()
+                camera = null
+            }
+            override fun setPhotoMode(photo: Boolean) = setMode(if (photo) Mode.PHOTO else Mode.VIDEO)
+        })
         applyProfile(profile)
+        binding.hcProfileTxt.setOnLongClickListener {
+            cycleProfile()
+            true
+        }
+        binding.modePlay.setOnClickListener { hc.setLamp(Lamp.PLAY_EDIT) }
+        binding.wideSelectBtn.setOnClickListener { toggleAspect() }
+        binding.modeVideo.setOnLongClickListener {
+            // HC90E: stand-in for the OPEN/EJECT lever. CCDCam: not handled.
+            if (hc.active) hc.ejectOrInsert()
+            hc.active
+        }
 
         binding.profileTxt.setOnLongClickListener {
             cycleProfile()
@@ -182,13 +208,14 @@ class MainActivity : AppCompatActivity() {
             bindCamera()
         }
         binding.shutterBtn.setOnClickListener {
+            if (hc.cameraSuspended) return@setOnClickListener   // PLAY/EDIT: START/STOP inactive
             when (mode) {
                 Mode.PHOTO -> capturePhoto()
                 Mode.VIDEO -> toggleRecording()
             }
         }
-        binding.modePhoto.setOnClickListener { setMode(Mode.PHOTO) }
-        binding.modeVideo.setOnClickListener { setMode(Mode.VIDEO) }
+        binding.modePhoto.setOnClickListener { if (hc.active) hc.setLamp(Lamp.MEMORY) else setMode(Mode.PHOTO) }
+        binding.modeVideo.setOnClickListener { if (hc.active) hc.setLamp(Lamp.TAPE) else setMode(Mode.VIDEO) }
 
         scaleDetector = ScaleGestureDetector(this, object : ScaleGestureDetector.SimpleOnScaleGestureListener() {
             override fun onScale(detector: ScaleGestureDetector): Boolean {
@@ -241,6 +268,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindCamera() {
         if (!hasPerms()) return
+        if (hc.cameraSuspended) return   // HC90E PLAY/EDIT: camera section off
         val providerFuture = ProcessCameraProvider.getInstance(this)
         providerFuture.addListener({
             val provider = providerFuture.get()
@@ -316,6 +344,8 @@ class MainActivity : AppCompatActivity() {
             regionAspect = 16f / 9f,
             pictureAspect = if (aspectRatio == AspectRatio.RATIO_4_3) 4f / 3f else 16f / 9f,
             sensorRotationDegrees = cam.cameraInfo.getSensorRotationDegrees(rotation),
+            // HC90E: the picture sits in the emulated 16:9 LCD band, like the OSD.
+            lcdAspect = if (usesPictureFraming()) 16f / 9f else null,
         )
     }
 
@@ -325,6 +355,7 @@ class MainActivity : AppCompatActivity() {
         // from a tighter horizontal sample range scaled to fill output width.
         ccdProcessor.stretch = profile.stretch
         binding.aspectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
+        binding.wideSelectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "WIDE 4:3" else "WIDE 16:9"
     }
 
     /** Pushes [p] to the GL processor and HUD (the caller rebinds if the camera is bound). */
@@ -333,6 +364,7 @@ class MainActivity : AppCompatActivity() {
         ccdProcessor.profile = p
         binding.profileTxt.text = p.hudLabel
         applyAspectLabel()
+        hc.setActive(usesPictureFraming())
     }
 
     private fun cycleProfile() {
@@ -409,6 +441,7 @@ class MainActivity : AppCompatActivity() {
             stopRecording()
             return
         }
+        if (!hc.canStartRecording()) return
         val vc = videoCapture ?: run {
             Toast.makeText(this, "Camera not ready", Toast.LENGTH_SHORT).show()
             return
@@ -439,8 +472,16 @@ class MainActivity : AppCompatActivity() {
                         binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video_recording)
                         recordStartMs = SystemClock.elapsedRealtime()
                         uiHandler.post(tickRunnable)
+                        hc.onRecordingStarted()
+                    }
+                    is VideoRecordEvent.Status -> {
+                        hc.onRecordingProgress(event.recordingStats.recordedDurationNanos / 1_000_000)
                     }
                     is VideoRecordEvent.Finalize -> {
+                        hc.onRecordingFinished(
+                            event.recordingStats.recordedDurationNanos / 1_000_000,
+                            saved = event.outputResults.outputUri != android.net.Uri.EMPTY,
+                        )
                         recordingRotation = null
                         updateFraming()
                         binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video)
@@ -471,6 +512,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onPause() {
         if (recording != null) stopRecording()
+        hc.onHostPause()
         uiHandler.removeCallbacks(tickRunnable)
         uiHandler.removeCallbacks(dateRunnable)
         orientationListener.disable()
@@ -479,6 +521,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        hc.release()
         ccdProcessor.release()
     }
 

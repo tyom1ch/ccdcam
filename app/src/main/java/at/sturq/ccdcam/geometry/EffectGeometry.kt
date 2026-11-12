@@ -86,6 +86,9 @@ class EffectGeometry(
          *   (multiple of 90)
          * @param pictureAspect width/height of the picture in upright orientation (4/3, 16/9).
          *   Fitted inside the upright region; the rest is pillar/letterbox.
+         * @param containerAspect optional upright aspect of a display band (the emulated 16:9
+         *   LCD) that is first fitted into the region; the picture is then fitted into it.
+         *   Null = the whole upright region.
          */
         fun compute(
             bufferWidth: Int,
@@ -93,6 +96,7 @@ class EffectGeometry(
             regionAspect: Float,
             uprightCwDegrees: Int,
             pictureAspect: Float,
+            containerAspect: Float? = null,
         ): EffectGeometry {
             require(bufferWidth > 0 && bufferHeight > 0)
             require(regionAspect > 0f && pictureAspect > 0f)
@@ -106,8 +110,14 @@ class EffectGeometry(
             //    buffer, so its pixel aspect is regionAspect; a quarter turn swaps the axes.
             val uprightRegionAspect = if (turnsCw % 2 == 1) 1f / regionAspect else regionAspect
 
-            // 3. Picture rectangle inside the upright region.
-            val (pw, ph) = fit(pictureAspect, uprightRegionAspect)
+            // 3. Picture rectangle inside the upright region, optionally inside a centred
+            //    container band (e.g. the 16:9 LCD) first. Both fits are centred, so the
+            //    fractions multiply.
+            val (cw, ch) = if (containerAspect != null) fit(containerAspect, uprightRegionAspect) else Pair(1f, 1f)
+            val containerPixelAspect = if (containerAspect != null) containerAspect else uprightRegionAspect
+            val (pw0, ph0) = fit(pictureAspect, containerPixelAspect)
+            val pw = cw * pw0
+            val ph = ch * ph0
 
             // picture -> upright region -> buffer region -> buffer
             // Upright = buffer rotated CW by turnsCw, so upright -> buffer is CCW by turnsCw.

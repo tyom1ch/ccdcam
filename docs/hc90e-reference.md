@@ -15,6 +15,8 @@ as specifications.
   TODO: read the page itself and quote it.
 - **[S3]** DCR-HC90E Operation Guide 2-548-308-11(1) —
   <https://www.manualowl.com/m/Sony/DCR-HC90E/Manual/270901?page=3>. Not read yet.
+- **[S4]** DCR-HC90E Operating Guide 2-548-308-11(1), © 2005 Sony —
+  <https://archive.org/details/manualsbase-id-26109>. Read; see `docs/hc90e-ui-references.md`.
 - **[DV]** DV format (IEC 61834) for 625/50 systems. General format knowledge, not an HC90E
   document.
 
@@ -45,7 +47,8 @@ as specifications.
 
 ## Approximations (no official source)
 
-- Super NightShot: **not found** in [S1]. Treated as an artistic mode.
+- Super NightShot look (the *function* is documented for the HC90E: `SUPER NS` and
+  `NS LIGHT` in CAMERA SET, Operating Guide 2-548-308-11(1), see `docs/hc90e-ui-references.md`).
 - NightShot look (monochrome green tint, noise). In the app the phone torch is a separate
   "LIGHT" control and is never described as infrared.
 - CCD noise, smear, flare, colour grade, DCT blocking, interlace combing.

@@ -1,7 +1,11 @@
 package at.sturq.ccdcam.settings
 
 import android.content.SharedPreferences
+import at.sturq.ccdcam.firmware.FirmwareSettings
+import at.sturq.ccdcam.firmware.RecMode
+import at.sturq.ccdcam.firmware.VirtualCassette
 import at.sturq.ccdcam.profile.Profiles
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -42,6 +46,46 @@ class SettingsStoreTest {
 
         prefs.data["profile"] = "removed-profile"
         assertEquals(Profiles.CCDCAM_DEFAULT, store.profile)
+    }
+
+    @Test
+    fun firmwareDefaultsOnFreshInstall() {
+        assertEquals(FirmwareSettings(), SettingsStore(FakePrefs()).firmware)
+    }
+
+    @Test
+    fun firmwareRoundTripIncludingCassette() {
+        val prefs = FakePrefs()
+        val store = SettingsStore(prefs)
+        val tape = VirtualCassette.fresh().afterRecording(125_000, RecMode.LP)
+        val s = FirmwareSettings(
+            recMode = RecMode.LP, audioMode = FirmwareSettings.AUDIO_16BIT,
+            dataCode = FirmwareSettings.DATA_CODE_DATE_TIME, remaining = FirmwareSettings.REMAINING_ON,
+            beep = FirmwareSettings.BEEP_OFF, menuRotate = FirmwareSettings.MENU_ROTATE_OPPOSITE,
+            cassette = tape,
+        )
+        store.firmware = s
+        assertEquals(s, SettingsStore(prefs).firmware)
+        // Legacy keys untouched.
+        assertNull(prefs.data["aspect"])
+    }
+
+    @Test
+    fun ejectedCassettePersists() {
+        val prefs = FakePrefs()
+        SettingsStore(prefs).firmware = FirmwareSettings(cassette = null)
+        assertNull(SettingsStore(prefs).firmware.cassette)
+    }
+
+    @Test
+    fun corruptFirmwareValuesFallBackToDefaults() {
+        val prefs = FakePrefs(mapOf(
+            "fw_rec_mode" to "XP", "fw_beep" to "LOUD", "fw_tape_used_sp_ms" to "-5",
+        ))
+        val s = SettingsStore(prefs).firmware
+        assertEquals(RecMode.SP, s.recMode)
+        assertEquals(FirmwareSettings.BEEP_ON, s.beep)
+        assertEquals(VirtualCassette.fresh(), s.cassette)
     }
 
     /** Minimal in-memory SharedPreferences (strings only — all SettingsStore needs). */
