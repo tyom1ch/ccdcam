@@ -262,7 +262,10 @@ class Hc90eController(
 
     private fun enterPlayback() {
         host.cameraOff()
-        b.playbackView.visibility = View.VISIBLE
+        // Hide the camera viewport completely: its SurfaceView would otherwise keep the last
+        // frame and may stack above the player's surface.
+        b.previewView.visibility = View.INVISIBLE
+        b.playbackContainer.visibility = View.VISIBLE
         transport(FirmwareOsdView.Transport.STOP)
         b.firmwareOsd.playbackPositionMs = 0
         b.firmwareOsd.playbackClipTimeMs = null
@@ -288,7 +291,8 @@ class Hc90eController(
     private fun leavePlayback() {
         main.removeCallbacks(positionTicker)
         try { b.playbackView.stopPlayback() } catch (_: Throwable) {}
-        b.playbackView.visibility = View.GONE
+        b.playbackContainer.visibility = View.GONE
+        b.previewView.visibility = View.VISIBLE
         clips = emptyList()
         transport(FirmwareOsdView.Transport.STOP)
     }

@@ -19,15 +19,24 @@
         app:layout_constraintEnd_toEndOf="parent" />
 
     <!-- PLAY/EDIT: recorded scenes played back like a tape. -->
-    <VideoView
-        android:id="@+id/playbackView"
+    <FrameLayout
+        android:id="@+id/playbackContainer"
         android:layout_width="0dp"
         android:layout_height="0dp"
+        android:background="@android:color/black"
         android:visibility="gone"
         app:layout_constraintTop_toTopOf="@id/previewView"
         app:layout_constraintBottom_toBottomOf="@id/previewView"
         app:layout_constraintStart_toStartOf="@id/previewView"
-        app:layout_constraintEnd_toEndOf="@id/previewView" />
+        app:layout_constraintEnd_toEndOf="@id/previewView">
+
+        <!-- VideoView sizes itself to the clip's aspect; centred in the black area. -->
+        <VideoView
+            android:id="@+id/playbackView"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center" />
+    </FrameLayout>
 
     <!-- HC90E touch-panel display (P-MENU, MENU, indicators). Phone UI only, never recorded. -->
     <at.sturq.ccdcam.firmware.FirmwareOsdView
