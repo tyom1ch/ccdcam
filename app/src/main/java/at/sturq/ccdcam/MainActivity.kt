@@ -31,9 +31,11 @@ import androidx.camera.video.Recorder
 import androidx.camera.video.Recording
 import androidx.camera.video.VideoCapture
 import androidx.camera.video.VideoRecordEvent
+import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import at.sturq.ccdcam.databinding.ActivityMainBinding
 import at.sturq.ccdcam.profile.CameraProfile
+import at.sturq.ccdcam.profile.EffectSpace
 import at.sturq.ccdcam.profile.Profiles
 import at.sturq.ccdcam.settings.AspectSetting
 import at.sturq.ccdcam.settings.SettingsStore
@@ -74,6 +76,9 @@ class MainActivity : AppCompatActivity() {
     private var mode = Mode.VIDEO
 
     @Volatile private var lastSurfaceRotation: Int = Surface.ROTATION_0
+    /** Rotation the current recording was started with. VideoCapture ignores targetRotation
+     *  changes during a recording, so picture-space effects freeze to this value too. */
+    private var recordingRotation: Int? = null
     /** CW degrees to apply to PreviewView.bitmap before saving a photo (the bitmap is
      *  always in display orientation; we need to bake the physical rotation in). */
     @Volatile private var photoRotationCw: Int = 0
@@ -98,6 +103,7 @@ class MainActivity : AppCompatActivity() {
                 if (rot != lastSurfaceRotation) {
                     lastSurfaceRotation = rot
                     videoCapture?.targetRotation = rot
+                    if (recordingRotation == null) updateFraming()
                 }
             }
         }
@@ -241,13 +247,21 @@ class MainActivity : AppCompatActivity() {
             cameraProvider = provider
             provider.unbindAll()
 
+            // Picture framing (HC90E): preview and video share one 16:9 region so the emulated
+            // 4:3/16:9 picture is framed identically in both; the whole region is shown
+            // (FIT_CENTER). CCDCam keeps its original binding untouched.
+            val picture = usesPictureFraming()
+            binding.previewView.scaleType =
+                if (picture) PreviewView.ScaleType.FIT_CENTER else PreviewView.ScaleType.FILL_CENTER
+
             preview = Preview.Builder()
-                .setTargetAspectRatio(aspectRatio)
+                .setTargetAspectRatio(if (picture) AspectRatio.RATIO_16_9 else aspectRatio)
                 .build()
                 .also { it.setSurfaceProvider(binding.previewView.surfaceProvider) }
 
             val recorder = Recorder.Builder()
                 .setQualitySelector(QualitySelector.from(Quality.HD))
+                .apply { if (picture) setAspectRatio(AspectRatio.RATIO_16_9) }
                 .build()
             videoCapture = VideoCapture.withOutput(recorder).also {
                 it.targetRotation = lastSurfaceRotation
@@ -263,6 +277,7 @@ class MainActivity : AppCompatActivity() {
             try {
                 camera = provider.bindToLifecycle(this, selector, group)
                 updateZoomLabel(camera?.cameraInfo?.zoomState?.value?.zoomRatio ?: 1f)
+                updateFraming()
             } catch (e: Exception) {
                 Toast.makeText(this, "Camera bind failed: ${e.message}", Toast.LENGTH_LONG).show()
             }
@@ -279,7 +294,29 @@ class MainActivity : AppCompatActivity() {
         settings.aspect = if (aspectRatio == AspectRatio.RATIO_4_3)
             AspectSetting.RATIO_4_3 else AspectSetting.RATIO_16_9
         applyAspectLabel()
-        bindCamera()
+        if (usesPictureFraming()) {
+            // Picture aspect is a shader framing (pillar/letterbox); the camera stays as bound.
+            updateFraming()
+        } else {
+            bindCamera()
+        }
+    }
+
+    private fun usesPictureFraming() = profile.effectSpace == EffectSpace.PICTURE
+
+    /**
+     * Sends the current framing to the processor: shared region (16:9, see bindCamera),
+     * picture aspect from the 4:3/16:9 setting, and the CW rotation CameraX uses to make the
+     * sensor image upright for the current (or recording) target rotation.
+     */
+    private fun updateFraming() {
+        val cam = camera ?: return
+        val rotation = recordingRotation ?: lastSurfaceRotation
+        ccdProcessor.framing = CcdSurfaceProcessor.Framing(
+            regionAspect = 16f / 9f,
+            pictureAspect = if (aspectRatio == AspectRatio.RATIO_4_3) 4f / 3f else 16f / 9f,
+            sensorRotationDegrees = cam.cameraInfo.getSensorRotationDegrees(rotation),
+        )
     }
 
     private fun applyAspectLabel() {
@@ -290,7 +327,7 @@ class MainActivity : AppCompatActivity() {
         binding.aspectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
     }
 
-    /** Pushes [p] to the GL processor and HUD. No camera rebind: only shader uniforms change. */
+    /** Pushes [p] to the GL processor and HUD (the caller rebinds if the camera is bound). */
     private fun applyProfile(p: CameraProfile) {
         profile = p
         ccdProcessor.profile = p
@@ -307,6 +344,8 @@ class MainActivity : AppCompatActivity() {
         val next = all[(all.indexOf(profile) + 1) % all.size]
         settings.profile = next
         applyProfile(next)
+        // Profiles differ in preview aspect / scale type / Recorder aspect -> rebind.
+        bindCamera()
         Toast.makeText(this, next.displayName, Toast.LENGTH_SHORT).show()
     }
 
@@ -388,6 +427,8 @@ class MainActivity : AppCompatActivity() {
         ).setContentValues(cv).build()
 
         vc.targetRotation = lastSurfaceRotation
+        recordingRotation = lastSurfaceRotation
+        updateFraming()
         binding.modeTxt.text = "REC"
         recording = vc.output
             .prepareRecording(this, opts)
@@ -400,6 +441,8 @@ class MainActivity : AppCompatActivity() {
                         uiHandler.post(tickRunnable)
                     }
                     is VideoRecordEvent.Finalize -> {
+                        recordingRotation = null
+                        updateFraming()
                         binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video)
                         binding.recDot.visibility = View.INVISIBLE
                         binding.modeTxt.text = "STBY"

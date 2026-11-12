@@ -56,3 +56,8 @@ as specifications.
 
 The app writes MP4 (H.264 + AAC) through CameraX `Recorder`. It does not produce DV25
 (.dv/.avi), does not store 50i fields, and does not write a 720 × 576 file.
+
+What the HC90E PAL profile does today (stage 3): the look is sampled on a 720 × 576 grid
+with 576 scanlines in upright picture space, inside a 4:3 or 16:9 picture that is pillar- or
+letterboxed into a 16:9 recording: 1280 × 720 in landscape, 720 × 1280 in portrait (CameraX
+rotates the pixels; verified on Pixel 9 Pro XL). The file is never 720 × 576.

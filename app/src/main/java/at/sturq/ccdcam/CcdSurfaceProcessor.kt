@@ -17,7 +17,9 @@ import android.view.Surface
 import androidx.camera.core.SurfaceOutput
 import androidx.camera.core.SurfaceProcessor
 import androidx.camera.core.SurfaceRequest
+import at.sturq.ccdcam.geometry.EffectGeometry
 import at.sturq.ccdcam.profile.CameraProfile
+import at.sturq.ccdcam.profile.EffectSpace
 import at.sturq.ccdcam.profile.Profiles
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -48,6 +50,23 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
     /** Look parameters; read once per camera frame so every output gets the same values. */
     @Volatile var profile: CameraProfile = Profiles.CCDCAM_DEFAULT
 
+    /**
+     * Inputs for [EffectSpace.PICTURE] geometry. Ignored in texture space (CCDCam).
+     *
+     * @param regionAspect width/height, buffer (sensor) orientation, of the centred region the
+     *   downstream preview and video crops share
+     * @param pictureAspect upright width/height of the emulated picture (4/3 or 16/9)
+     * @param sensorRotationDegrees CameraInfo.getSensorRotationDegrees(targetRotation): CW
+     *   rotation CameraX applies (pixels and/or MP4 metadata) to make the sensor image upright
+     */
+    data class Framing(
+        val regionAspect: Float,
+        val pictureAspect: Float,
+        val sensorRotationDegrees: Int,
+    )
+
+    @Volatile var framing: Framing = Framing(16f / 9f, 16f / 9f, 0)
+
     // EGL state — initialized lazily on processor thread
     private var eglDisplay: EGLDisplay = EGL14.EGL_NO_DISPLAY
     private var eglContext: EGLContext = EGL14.EGL_NO_CONTEXT
@@ -65,6 +84,9 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
     private var uStretchLoc = -1
     private var uRotationLoc = -1
     private lateinit var lookUniforms: LookUniforms
+    private var uBufferToEffectLoc = -1
+    private var uEffectToBufferLoc = -1
+    private val identityMat3 = floatArrayOf(1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f)
     private lateinit var vertexBuf: FloatBuffer
     private lateinit var texBuf: FloatBuffer
     private val texMatrix = FloatArray(16)
@@ -78,11 +100,17 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
     private var initialized = false
     private var released = false
 
-    private data class OutputEntry(
+    private class OutputEntry(
         val eglSurface: EGLSurface,
         val width: Int,
         val height: Int,
-    )
+        /** CW rotation from sensor to this buffer, from SurfaceOutput.getSensorToBufferTransform. */
+        val sensorToBufferCw: Int,
+    ) {
+        var cachedFor: Pair<Framing, Int>? = null
+        var bufferToEffect: FloatArray? = null
+        var effectToBuffer: FloatArray? = null
+    }
 
     override fun onInputSurface(request: SurfaceRequest) {
         handler.post {
@@ -128,7 +156,14 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
                 output.close()
                 return@post
             }
-            outputs[output] = OutputEntry(eglSurf, output.size.width, output.size.height)
+            val m = FloatArray(9)
+            output.sensorToBufferTransform.getValues(m)
+            val sensorToBufferCw = EffectGeometry.rotationCwDegreesOf(m)
+            Log.i(TAG, "output size=${output.size} targets=${output.targets} " +
+                "sensorToBuffer=${m.contentToString()} rotationCw=$sensorToBufferCw")
+            outputs[output] = OutputEntry(
+                eglSurf, output.size.width, output.size.height, sensorToBufferCw,
+            )
         }
     }
 
@@ -145,9 +180,10 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
         }
         val pts = st.timestamp
         val frameProfile = profile
+        val frameFraming = framing
         for ((output, entry) in outputs) {
             if (!EGL14.eglMakeCurrent(eglDisplay, entry.eglSurface, entry.eglSurface, eglContext)) continue
-            drawOnce(entry.width, entry.height, output, frameProfile)
+            drawOnce(entry, output, frameProfile, frameFraming)
             EGLExt.eglPresentationTimeANDROID(eglDisplay, entry.eglSurface, pts)
             EGL14.eglSwapBuffers(eglDisplay, entry.eglSurface)
         }
@@ -155,7 +191,9 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
 
     private val combined = FloatArray(16)
 
-    private fun drawOnce(w: Int, h: Int, output: SurfaceOutput, look: CameraProfile) {
+    private fun drawOnce(entry: OutputEntry, output: SurfaceOutput, look: CameraProfile, fr: Framing) {
+        val w = entry.width
+        val h = entry.height
         // updateTransformMatrix(updated, original): combines camera tex transform with the
         // per-output rotation/mirror CameraX wants applied, so each output gets its own correct
         // matrix without any custom rotation math on our side.
@@ -175,6 +213,14 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
         GLES20.glUniform1f(uStretchLoc, stretch)
         GLES20.glUniform1f(uRotationLoc, 0f)
         lookUniforms.apply(look)
+        if (look.effectSpace == EffectSpace.PICTURE) {
+            updateGeometry(entry, fr)
+            GLES20.glUniformMatrix3fv(uBufferToEffectLoc, 1, false, entry.bufferToEffect, 0)
+            GLES20.glUniformMatrix3fv(uEffectToBufferLoc, 1, false, entry.effectToBuffer, 0)
+        } else {
+            GLES20.glUniformMatrix3fv(uBufferToEffectLoc, 1, false, identityMat3, 0)
+            GLES20.glUniformMatrix3fv(uEffectToBufferLoc, 1, false, identityMat3, 0)
+        }
 
         vertexBuf.position(0)
         GLES20.glEnableVertexAttribArray(aPosLoc)
@@ -185,6 +231,20 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
         GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, 4)
         GLES20.glDisableVertexAttribArray(aPosLoc)
         GLES20.glDisableVertexAttribArray(aTexLoc)
+    }
+
+    /** Recomputes picture-space matrices only when the framing or this output changes. */
+    private fun updateGeometry(entry: OutputEntry, fr: Framing) {
+        val uprightCw = ((fr.sensorRotationDegrees - entry.sensorToBufferCw) % 360 + 360) % 360
+        val key = fr to uprightCw
+        if (entry.cachedFor == key) return
+        val g = EffectGeometry.compute(
+            entry.width, entry.height, fr.regionAspect, uprightCw, fr.pictureAspect,
+        )
+        entry.bufferToEffect = g.bufferToEffect.toGlMat3()
+        entry.effectToBuffer = g.effectToBuffer.toGlMat3()
+        entry.cachedFor = key
+        Log.i(TAG, "picture geometry: buffer=${entry.width}x${entry.height} $fr uprightCw=$uprightCw")
     }
 
     private fun ensureInitialized() {
@@ -238,6 +298,8 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
         uStretchLoc = GLES20.glGetUniformLocation(program, "uStretch")
         uRotationLoc = GLES20.glGetUniformLocation(program, "uRotationRad")
         lookUniforms = LookUniforms(program)
+        uBufferToEffectLoc = GLES20.glGetUniformLocation(program, "uBufferToEffect")
+        uEffectToBufferLoc = GLES20.glGetUniformLocation(program, "uEffectToBuffer")
 
         val vertices = floatArrayOf(-1f, -1f,  1f, -1f,  -1f,  1f,  1f,  1f)
         val texCoords = floatArrayOf( 0f,  0f,  1f,  0f,   0f,  1f,  1f,  1f)

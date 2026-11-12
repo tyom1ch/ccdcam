@@ -26,6 +26,8 @@ data class ShaderParams(
     val scanlineAmp: Float,
     val vignetteStrength: Float,
     val chromaShift: Float,
+    /** Horizontal low-pass within a CCD cell, in cells (0 = off, exact original sampling). */
+    val hBlur: Float,
 )
 
 /** Coordinate space the look is computed in (`uEffectSpace` in ccd.frag). */
@@ -33,8 +35,12 @@ enum class EffectSpace(val uniformValue: Float) {
     /** Camera texture space (after the transform matrix). The original CCDCam behaviour. */
     TEXTURE(0f),
 
-    /** Output-surface space: grid, scanlines, smear and flare follow the output frame. */
-    OUTPUT(1f),
+    /**
+     * Upright picture space (geometry/EffectGeometry.kt): grid, scanlines, smear and flare
+     * follow the image as the viewer sees it (preview, MP4 with its rotation metadata), and
+     * the picture keeps its aspect via pillar/letterbox inside the shared preview/video region.
+     */
+    PICTURE(1f),
 }
 
 /**
