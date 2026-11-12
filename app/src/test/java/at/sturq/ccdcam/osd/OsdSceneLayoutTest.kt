@@ -130,7 +130,7 @@ class OsdSceneLayoutTest {
 
     @Test
     fun nightShotCaptionIsCentredAndPushesMessagesDown() {
-        val items = OsdScene.build(state(message = "Insert a cassette").copy(nightShot = true), false)
+        val items = OsdScene.build(state(message = "Insert a cassette").copy(nightShot = true, blinkOn = true), false)
         val cap = items.filterIsInstance<OsdItem.Text>().first { it.text == "NIGHTSHOT" }
         assertEquals(OsdItem.Align.CENTER, cap.align)
         assertEquals(OsdScene.LCD_W / 2f, cap.x, 0.01f)
@@ -140,5 +140,29 @@ class OsdSceneLayoutTest {
         assertTrue(OsdScene.build(state().copy(nightShot = true), true)
             .any { it is OsdItem.Text && it.text == "NIGHTSHOT" })
         assertFalse(OsdScene.build(state(), true).any { it is OsdItem.Text && it.text == "NIGHTSHOT" })
+    }
+
+    @Test
+    fun recAndNightShotCaptionBlinkStbyDoesNot() {
+        fun texts(rec: Boolean, on: Boolean) = OsdScene.build(
+            state(recording = rec).copy(nightShot = true, blinkOn = on), true,
+        ).filterIsInstance<OsdItem.Text>().map { it.text }
+        assertTrue("REC" in texts(true, true))
+        assertFalse("REC" in texts(true, false))
+        assertTrue("NIGHTSHOT" in texts(true, true))
+        assertFalse("NIGHTSHOT" in texts(true, false))
+        assertTrue("STBY" in texts(false, false))
+        // counter and battery never blink
+        assertTrue("0:06:05" in texts(true, false))
+    }
+
+    @Test
+    fun nightShotCaptionIsHalfSize() {
+        val cap = OsdScene.build(state().copy(nightShot = true), false)
+            .filterIsInstance<OsdItem.Text>().first { it.text == "NIGHTSHOT" }
+        val full = OsdLayout.quads(listOf(cap.copy(scale = 1f)), font, atlas)
+        val half = OsdLayout.quads(listOf(cap), font, atlas)
+        assertEquals((full[0].bottom - full[0].top) / 2f, half[0].bottom - half[0].top, 1e-3f)
+        assertEquals((full.last().right - full.first().left) / 2f, half.last().right - half.first().left, 1e-3f)
     }
 }
