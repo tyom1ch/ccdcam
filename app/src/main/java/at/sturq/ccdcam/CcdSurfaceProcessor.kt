@@ -120,6 +120,8 @@ class CcdSurfaceProcessor(
         val height: Int,
         /** CW rotation from sensor to this buffer, from SurfaceOutput.getSensorToBufferTransform. */
         val sensorToBufferCw: Int,
+        /** Buffer is a mirror image (front-camera preview). */
+        val mirrored: Boolean = false,
     ) {
         var cachedFor: Pair<Framing, Int>? = null
         var bufferToEffect: FloatArray? = null
@@ -198,6 +200,7 @@ class CcdSurfaceProcessor(
                 "sensorToBuffer=${m.contentToString()} rotationCw=$sensorToBufferCw")
             outputs[output] = OutputEntry(
                 eglSurf, output.size.width, output.size.height, sensorToBufferCw,
+                EffectGeometry.isMirrored(m),
             )
         }
     }
@@ -269,7 +272,9 @@ class CcdSurfaceProcessor(
 
     /** Recomputes picture-space matrices only when the framing or this output changes. */
     private fun updateGeometry(entry: OutputEntry, fr: Framing) {
-        val uprightCw = ((fr.sensorRotationDegrees - entry.sensorToBufferCw) % 360 + 360) % 360
+        val uprightCw = EffectGeometry.uprightCwDegrees(
+            fr.sensorRotationDegrees, entry.sensorToBufferCw, entry.mirrored,
+        )
         val key = fr to uprightCw
         if (entry.cachedFor == key) return
         val region = fr.regionAspect ?: (entry.width.toFloat() / entry.height)
