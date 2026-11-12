@@ -43,6 +43,39 @@ object LcdLayout {
         }
     }
 
+    /**
+     * Upright drawing frame for the firmware display while the activity stays portrait.
+     *
+     * [deviceRotationCw] is how far the phone is turned clockwise from portrait (the
+     * OrientationEventListener bucket: 0/90/180/270). The display is drawn in a virtual
+     * [width] × [height] frame and turned by [canvasAngle] (Canvas.rotate convention: positive is
+     * clockwise on screen) about the centre of [region], so it stays upright for the user.
+     */
+    class RotatedFrame(val region: Box, deviceRotationCw: Int) {
+        val turns = ((deviceRotationCw / 90) % 4 + 4) % 4
+        val canvasAngle: Float = -90f * turns
+        val width: Float = if (turns % 2 == 1) region.height else region.width
+        val height: Float = if (turns % 2 == 1) region.width else region.height
+        private val cos = Math.cos(Math.toRadians(canvasAngle.toDouble())).toFloat().roundTo()
+        private val sin = Math.sin(Math.toRadians(canvasAngle.toDouble())).toFloat().roundTo()
+
+        /** Virtual frame point → screen point. */
+        fun toScreen(x: Float, y: Float): Pair<Float, Float> {
+            val dx = x - width / 2f
+            val dy = y - height / 2f
+            return Pair(region.centerX + dx * cos - dy * sin, region.centerY + dx * sin + dy * cos)
+        }
+
+        /** Screen point → virtual frame point (inverse rotation). */
+        fun toVirtual(x: Float, y: Float): Pair<Float, Float> {
+            val dx = x - region.centerX
+            val dy = y - region.centerY
+            return Pair(width / 2f + dx * cos + dy * sin, height / 2f - dx * sin + dy * cos)
+        }
+
+        private fun Float.roundTo(): Float = Math.round(this).toFloat()   // exact quarter turns
+    }
+
     /** A box given in LCD fractions (x0, y0, x1, y1) → view pixels. */
     fun at(lcd: Box, x0: Float, y0: Float, x1: Float, y1: Float) = Box(
         lcd.left + x0 * lcd.width, lcd.top + y0 * lcd.height,

@@ -122,4 +122,4 @@ rebinds CameraX); the firmware display and the body-control labels rotate with t
 - [ ] Upside-down portrait: OSD upright.
 - [ ] Rotate during recording: recording continues, OSD follows the phone, the recorded
       picture keeps the orientation it started with (section 9).
-- [ ] MEMORY / TAPE / PLAY/EDIT and WIDE labels rotate too.
+- [ ] MEMORY / TAPE / PLAY/EDIT and WIDE stay fixed (they are printed on the camcorder body).

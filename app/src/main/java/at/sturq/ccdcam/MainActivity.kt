@@ -97,6 +97,9 @@ class MainActivity : AppCompatActivity() {
                     orientation < 315 -> 270
                     else -> 0
                 }
+                // The firmware display turns with the phone (the activity itself stays portrait,
+                // so rotating never recreates it, interrupts a recording or rebinds CameraX).
+                binding.firmwareOsd.deviceRotationCw = photoRotationCw
                 if (rot != lastSurfaceRotation) {
                     lastSurfaceRotation = rot
                     videoCapture?.targetRotation = rot
