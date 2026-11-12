@@ -120,6 +120,6 @@ rebinds CameraX); the firmware display and the body-control labels rotate with t
 - [ ] Landscape (both directions): the 16:9 LCD fills the preview, OSD text upright, buttons
       work where they are drawn.
 - [ ] Upside-down portrait: OSD upright.
-- [ ] Rotate during recording: recording continues, OSD follows the phone, the recorded
-      picture keeps the orientation it started with (section 9).
+- [ ] Rotate during recording: recording continues; the OSD and the recorded picture both stay
+      in the orientation the recording started with; after STOP the OSD follows the phone again.
 - [ ] MEMORY / TAPE / PLAY/EDIT and WIDE stay fixed (they are printed on the camcorder body).

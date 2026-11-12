@@ -98,8 +98,9 @@ class MainActivity : AppCompatActivity() {
                     else -> 0
                 }
                 // The firmware display turns with the phone (the activity itself stays portrait,
-                // so rotating never recreates it, interrupts a recording or rebinds CameraX).
-                binding.firmwareOsd.deviceRotationCw = photoRotationCw
+                // so rotating never recreates it or rebinds CameraX) — but not while recording:
+                // like the picture, it stays in the orientation the recording started with.
+                if (recordingRotation == null) binding.firmwareOsd.deviceRotationCw = photoRotationCw
                 if (rot != lastSurfaceRotation) {
                     lastSurfaceRotation = rot
                     videoCapture?.targetRotation = rot
@@ -380,6 +381,7 @@ class MainActivity : AppCompatActivity() {
                         )
                         recordingRotation = null
                         updateFraming()
+                        binding.firmwareOsd.deviceRotationCw = photoRotationCw   // follow the phone again
                         binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video)
                         val msg = if (event.hasError())
                             "Save error: ${event.error}"
