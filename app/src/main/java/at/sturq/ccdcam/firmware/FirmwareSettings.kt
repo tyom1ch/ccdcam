@@ -39,6 +39,7 @@ data class FirmwareSettings(
     fun audioProfile(): AudioProfile = when (audioEmu) {
         AUDIO_EMU_CLEAN -> AudioProfile.CLEAN
         AUDIO_EMU_LOFI -> AudioProfile.LOFI
+        AUDIO_EMU_RETRO -> AudioProfile.RETRO
         else -> if (audioMode == AUDIO_16BIT) AudioProfile.DV16_48K else AudioProfile.DV12_32K
     }
     val burnOsdOn: Boolean get() = burnOsd == BURN_OSD_ON
@@ -111,6 +112,7 @@ data class FirmwareSettings(
         const val SUPER_NS_ON = "ON"
         const val AUDIO_EMU_DV = "DV"
         const val AUDIO_EMU_LOFI = "LO-FI"
+        const val AUDIO_EMU_RETRO = "RETRO"
         const val AUDIO_EMU_CLEAN = "CLEAN"
         const val ORIG_AUDIO_REPLACE = "REPLACE"
         const val ORIG_AUDIO_KEEP = "KEEP"

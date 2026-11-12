@@ -76,6 +76,17 @@ DATE/TIME / CAMERA DATA · `REMAINING` AUTO (about 8 s) / ON · `BEEP` ON ("a me
 you start/stop recording, or operate the touch panel") / OFF · `MENU ROTATE` NORMAL / OPPOSITE ·
 `A.SHUT OFF` 5 min / NEVER · `GUIDEFRAME` OFF / ON (frame not recorded).
 
+## DATA CODE — HC90 guide p. 28, p. 56
+- Date/time and camera setting data are recorded automatically and are not shown while
+  recording; in playback DATA CODE shows OFF / DATE/TIME / CAMERA DATA. Confirmed (HC90).
+- CAMERA DATA items: SteadyShot off, exposure, white balance, gain (these only in tape
+  playback), shutter speed, aperture value; sample screen `AUTO AWB 100 F1.8 9dB`; shown in
+  the date/time area. Confirmed (HC90).
+- Emulation: the phone's real per-frame exposure time / ISO / aperture are logged every 0.5 s
+  while recording (`files/datacode/<scene>.txt`). Shutter rounded to camcorder steps, gain in
+  3 dB steps from base ISO (0–18 dB), aperture not below F1.8, WB as text (`AWB`, `IN`, `OUT`,
+  `OP`) instead of Sony's pictograms, arrangement of the items: Approximation.
+
 ## Tape — Confirmed (HC90E) unless noted
 - Mini DV DVM60: SP 60 min, LP 90 min (spec page).
 - Warnings (M-E p. 98–99): cassette indicator flashes slowly when less than 5 minutes remain,

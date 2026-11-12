@@ -152,7 +152,10 @@ object HC90eMenu {
                 ),
                 MenuItem(
                     AUDIO_EMU,
-                    options = opts(FirmwareSettings.AUDIO_EMU_DV, FirmwareSettings.AUDIO_EMU_LOFI, FirmwareSettings.AUDIO_EMU_CLEAN),
+                    options = opts(
+                        FirmwareSettings.AUDIO_EMU_DV, FirmwareSettings.AUDIO_EMU_LOFI,
+                        FirmwareSettings.AUDIO_EMU_RETRO, FirmwareSettings.AUDIO_EMU_CLEAN,
+                    ),
                     lamps = setOf(Lamp.TAPE), emulated = true,
                 ),
                 MenuItem(

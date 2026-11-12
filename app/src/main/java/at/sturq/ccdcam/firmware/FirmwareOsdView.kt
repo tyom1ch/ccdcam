@@ -78,8 +78,12 @@ class FirmwareOsdView @JvmOverloads constructor(
     var playbackPositionMs = 0L
         set(value) { field = value; invalidate() }
 
-    /** Recording date/time of the clip being played (epoch ms), for DATA CODE. */
+    /** Recording date/time of the frame being played (epoch ms), for DATA CODE. */
     var playbackClipTimeMs: Long? = null
+        set(value) { field = value; invalidate() }
+
+    /** Camera data of the frame being played (null: the scene has none), for DATA CODE. */
+    var playbackCameraData: CameraData? = null
         set(value) { field = value; invalidate() }
 
     /**
@@ -306,6 +310,11 @@ class FirmwareOsdView @JvmOverloads constructor(
             faderArmed = !forVideo && nav.lamp == Lamp.TAPE && !recording &&
                 s.fader != FirmwareSettings.FADER_OFF,
             blinkOn = (now / 500) % 2 == 0L,
+            cameraData = if (!forVideo && nav.lamp == Lamp.PLAY_EDIT &&
+                s.dataCode == FirmwareSettings.DATA_CODE_CAMERA_DATA
+            ) {
+                playbackCameraData?.let { CameraDataFormat.format(it) } ?: CameraDataFormat.EMPTY
+            } else null,
         )
     }
 

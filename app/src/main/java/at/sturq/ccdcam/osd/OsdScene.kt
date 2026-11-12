@@ -34,6 +34,8 @@ data class OsdIndicators(
     val faderArmed: Boolean = false,
     /** Super NightShot active (NightShot on + SUPER NS). */
     val superNightShot: Boolean = false,
+    /** DATA CODE → CAMERA DATA in playback: exposure, WB, shutter, F, gain (or placeholders). */
+    val cameraData: List<String>? = null,
 ) {
     enum class Transport { STOP, PLAY, PAUSE, REW, FF }
 }
@@ -151,6 +153,16 @@ object OsdScene {
 
         if (s.faderArmed && s.blinkOn) {
             out += OsdItem.Text("FADER", LEFT, ROW2 + CELL_H, OsdItem.Align.LEFT, WHITE)
+        }
+
+        // DATA CODE camera data — shown in the date/time area (guide p. 56). Item set and the
+        // sample `AUTO AWB 100 F1.8 9dB` are documented; the arrangement is an approximation.
+        s.cameraData?.let { d ->
+            out += OsdItem.Text(d[0], 0.050f * lcdW, DATE_ROW - CELL_H * 1.25f, OsdItem.Align.LEFT, WHITE)
+            out += OsdItem.Text(d[1], 0.050f * lcdW, DATE_ROW, OsdItem.Align.LEFT, WHITE)
+            out += OsdItem.Text(d[2], 0.330f * lcdW, DATE_ROW, OsdItem.Align.RIGHT, WHITE)
+            out += OsdItem.Text(d[3], 0.400f * lcdW, DATE_ROW, OsdItem.Align.LEFT, WHITE)
+            out += OsdItem.Text(d[4], 0.950f * lcdW, DATE_ROW, OsdItem.Align.RIGHT, WHITE)
         }
 
         // Date / time row

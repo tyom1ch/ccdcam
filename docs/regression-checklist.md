@@ -174,3 +174,14 @@ LIGHT is the phone torch and is independent of NightShot.
       (same frame count, 25 fps), rotation correct.
 - [ ] ORIG AUDIO KEEP: original clip unchanged + `<name>_dv.mp4` with processed sound.
 - [ ] A/V sync after processing (clap test), no clicks at chunk borders.
+- [ ] AUDIO EMU RETRO: no low end, slightly crunchy/aliased highs (19 kHz sample-hold,
+      ~10-bit crush mixed in), AGC pumping; no clipping.
+
+## 17. DATA CODE, rotation, UI sounds (final)
+- [ ] Record a scene, PLAY/EDIT, P-MENU page 2 -> DATA CODE DATE/TIME: date/time of the frame
+      (advances with playback). CAMERA DATA: `AUTO AWB 100 F1.8 0dB`-style values that change
+      with the light during the scene; older scenes without data show `--` placeholders.
+- [ ] Shaking the phone does not flip the OSD; a deliberate turn rotates it after ~0.4 s with
+      a short fade. During recording the OSD stays fixed.
+- [ ] Touch keys: click on press, declick on release; REC start/stop sound; sounds audible with
+      the ringer silent (media volume). Tape noise in the clip is quiet.

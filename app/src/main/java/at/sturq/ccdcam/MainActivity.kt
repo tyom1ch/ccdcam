@@ -27,6 +27,9 @@ import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
 import at.sturq.ccdcam.firmware.FirmwareSettings
+import at.sturq.ccdcam.firmware.CameraDataFormat
+import at.sturq.ccdcam.firmware.CameraDataLog
+import at.sturq.ccdcam.firmware.CameraDataStore
 import at.sturq.ccdcam.audio.ClipAudioProcessor
 import at.sturq.ccdcam.audio.SfxMixer
 import androidx.camera.core.CameraSelector
@@ -104,6 +107,20 @@ class MainActivity : AppCompatActivity() {
      *  always in display orientation; we need to bake the physical rotation in). */
     @Volatile private var photoRotationCw: Int = 0
     private val orientationStabilizer = at.sturq.ccdcam.camera.OrientationStabilizer()
+
+    private val cameraDataLog = CameraDataLog()
+    private val captureDataCallback = object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
+        override fun onCaptureCompleted(
+            session: android.hardware.camera2.CameraCaptureSession,
+            request: CaptureRequest,
+            result: android.hardware.camera2.TotalCaptureResult,
+        ) {
+            val exp = result.get(android.hardware.camera2.CaptureResult.SENSOR_EXPOSURE_TIME) ?: return
+            val iso = result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY) ?: return
+            val ap = result.get(android.hardware.camera2.CaptureResult.LENS_APERTURE) ?: CameraDataFormat.MIN_F
+            cameraDataLog.onFrame(android.os.SystemClock.uptimeMillis(), exp, iso, ap)
+        }
+    }
 
     /** Short fade out / in around the OSD turn instead of an instant flip. */
     private fun turnOsd(cw: Int) {
@@ -292,6 +309,7 @@ class MainActivity : AppCompatActivity() {
         return wanted.filterNot(this::isGranted).toTypedArray()
     }
 
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
     private fun bindCamera() {
         if (!hasPerms()) return
         if (hc.cameraSuspended) return   // PLAY/EDIT: camera section off
@@ -317,8 +335,11 @@ class MainActivity : AppCompatActivity() {
                 ?.supportedFrameRateRanges.orEmpty().map { it.lower to it.upper }
             Log.i(TAG, "AE fps ranges ${FrameRatePlan.describe(ranges)}; PAL 25p by frame-grid conversion")
 
-            preview = Preview.Builder()
-                .setTargetAspectRatio(streamAspect)
+            val previewBuilder = Preview.Builder().setTargetAspectRatio(streamAspect)
+            // DATA CODE: real exposure / sensitivity / aperture of the frames being recorded.
+            androidx.camera.camera2.interop.Camera2Interop.Extender(previewBuilder)
+                .setSessionCaptureCallback(captureDataCallback)
+            preview = previewBuilder
                 .build()
                 .also { it.setSurfaceProvider(binding.previewView.surfaceProvider) }
 
@@ -341,6 +362,11 @@ class MainActivity : AppCompatActivity() {
 
             try {
                 camera = provider.bindToLifecycle(this, selector, group)
+                cameraDataLog.isoMin = camera?.let {
+                    androidx.camera.camera2.interop.Camera2CameraInfo.from(it.cameraInfo)
+                        .getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
+                        ?.lower
+                } ?: 100
                 hc.reapplyBodySwitches()
                 updateFraming()
             } catch (e: Exception) {
@@ -472,6 +498,11 @@ class MainActivity : AppCompatActivity() {
             .start(ContextCompat.getMainExecutor(this)) { event ->
                 when (event) {
                     is VideoRecordEvent.Start -> {
+                        hc.navigator.settings.let {
+                            cameraDataLog.whiteBal = it.whiteBal
+                            cameraDataLog.exposure = it.exposure
+                        }
+                        cameraDataLog.start(android.os.SystemClock.uptimeMillis())
                         binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video_recording)
                         hc.onRecordingStarted()
                     }
@@ -479,6 +510,11 @@ class MainActivity : AppCompatActivity() {
                         hc.onRecordingProgress(event.recordingStats.recordedDurationNanos / 1_000_000)
                     }
                     is VideoRecordEvent.Finalize -> {
+                        val dataCode = cameraDataLog.stop()
+                        if (!event.hasError()) ioScope.launch {
+                            try { CameraDataStore.save(hc.dataCodeDir(), "$name.mp4", dataCode) }
+                            catch (t: Throwable) { Log.w(TAG, "data code save failed", t) }
+                        }
                         hc.onRecordingFinished(
                             event.recordingStats.recordedDurationNanos / 1_000_000,
                             saved = event.outputResults.outputUri != android.net.Uri.EMPTY,

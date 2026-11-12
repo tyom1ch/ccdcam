@@ -74,7 +74,7 @@ class AudioDspTest {
     fun cleanIsBypassAndProfilesKeepLevelsSane() {
         val x = sine(440.0, 48_000, 0.5)
         assertArrayEquals(x, AudioChain(AudioProfile.CLEAN, 48_000, 1).process(x), 0f)
-        for (p in listOf(AudioProfile.DV16_48K, AudioProfile.DV12_32K, AudioProfile.LOFI)) {
+        for (p in listOf(AudioProfile.DV16_48K, AudioProfile.DV12_32K, AudioProfile.LOFI, AudioProfile.RETRO)) {
             val c = AudioChain(p, 48_000, 1)
             val y = c.process(x)
             assertEquals("$p length", x.size.toDouble() * p.outRate / 48_000, y.size.toDouble(), 2.0)
@@ -100,6 +100,20 @@ class AudioDspTest {
         }
         assertTrue("lo-fi ${ratio(AudioProfile.LOFI)} < dv ${ratio(AudioProfile.DV16_48K)}",
             ratio(AudioProfile.LOFI) < 0.5 * ratio(AudioProfile.DV16_48K))
+    }
+
+    @Test
+    fun retroHasNoLowsAndIsCrushed() {
+        fun tone(f: Double) = FloatArray(48_000) { i -> (0.2 * sin(2 * PI * f * i / 48_000.0)).toFloat() }
+        fun level(p: AudioProfile, f: Double, at: Double) = goertzel(AudioChain(p, 48_000, 1).process(tone(f)), at, p.outRate)
+        // 100 Hz vs 1 kHz: lows much weaker than in DV
+        val retroLow = level(AudioProfile.RETRO, 100.0, 100.0) / level(AudioProfile.RETRO, 1_000.0, 1_000.0)
+        val dvLow = level(AudioProfile.DV16_48K, 100.0, 100.0) / level(AudioProfile.DV16_48K, 1_000.0, 1_000.0)
+        assertTrue("retro lows $retroLow vs dv $dvLow", retroLow < 0.3 * dvLow)
+        // 7 kHz through a 19 kHz sample-hold: alias at 12 kHz appears
+        val retroAlias = level(AudioProfile.RETRO, 7_000.0, 12_000.0) / level(AudioProfile.RETRO, 7_000.0, 7_000.0)
+        val dvAlias = level(AudioProfile.DV16_48K, 7_000.0, 12_000.0) / level(AudioProfile.DV16_48K, 7_000.0, 7_000.0)
+        assertTrue("retro alias $retroAlias vs dv $dvAlias", retroAlias > 10 * dvAlias && retroAlias > 0.02)
     }
 
     /** Magnitude of [freq] in the second half of [x] (Goertzel). */

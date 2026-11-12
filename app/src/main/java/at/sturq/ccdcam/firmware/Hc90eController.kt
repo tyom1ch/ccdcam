@@ -363,7 +363,10 @@ class Hc90eController(
 
     // ================= PLAY/EDIT tape playback =================
 
-    private data class Clip(val uri: Uri, val durationMs: Long, val takenMs: Long)
+    private data class Clip(val uri: Uri, val durationMs: Long, val takenMs: Long, val name: String)
+
+    /** Camera data of the scene being played (DATA CODE). */
+    private var clipData: List<CameraDataSample> = emptyList()
 
     private var clips: List<Clip> = emptyList()
     private var clipIndex = 0
@@ -474,9 +477,15 @@ class Hc90eController(
                 transport(FirmwareOsdView.Transport.PLAY)
             }
         }
-        b.firmwareOsd.playbackClipTimeMs = clip.takenMs
+        clipData = emptyList()
+        io.execute {
+            val data = CameraDataStore.load(dataCodeDir(), clip.name)
+            main.post { if (clips.getOrNull(clipIndex) == clip) { clipData = data; updatePlaybackPosition() } }
+        }
         updatePlaybackPosition()
     }
+
+    fun dataCodeDir(): java.io.File = java.io.File(context.filesDir, "datacode")
 
     private fun onClipCompleted() {
         if (clipIndex < clips.size - 1) loadClip(clipIndex + 1, play = true)
@@ -488,6 +497,9 @@ class Hc90eController(
         val before = clips.take(clipIndex).sumOf { it.durationMs }
         val pos = try { b.playbackView.currentPosition.toLong() } catch (_: Throwable) { 0L }
         b.firmwareOsd.playbackPositionMs = before + pos
+        // DATA CODE follows the frame: date/time and camera data at this point of the scene.
+        b.firmwareOsd.playbackClipTimeMs = clips[clipIndex].takenMs + pos
+        b.firmwareOsd.playbackCameraData = CameraDataFormat.at(clipData, pos)
     }
 
     /** Recorded scenes (Movies/Handycam and legacy Movies/CCDCam), oldest first: tape order. */
@@ -498,6 +510,7 @@ class Hc90eController(
         val projection = arrayOf(
             MediaStore.Video.Media._ID, MediaStore.Video.Media.DURATION,
             MediaStore.Video.Media.DATE_TAKEN, MediaStore.Video.Media.DATE_ADDED,
+            MediaStore.Video.Media.DISPLAY_NAME,
         )
         // New scenes go to Movies/Handycam; scenes from before the rename stay in Movies/CCDCam.
         val (selection, args) = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -513,11 +526,15 @@ class Hc90eController(
                 val durCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
                 val takenCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_TAKEN)
                 val addedCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
+                val nameCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
                 while (c.moveToNext()) {
                     val dur = c.getLong(durCol)
                     if (dur <= 0) continue
-                    val taken = c.getLong(takenCol).takeIf { it > 0 } ?: (c.getLong(addedCol) * 1000)
-                    out += Clip(ContentUris.withAppendedId(uri, c.getLong(idCol)), dur, taken)
+                    val name = c.getString(nameCol) ?: ""
+                    // Scene start: from our file name (exact), else MediaStore's date.
+                    val taken = CameraDataFormat.startFromName(name)
+                        ?: c.getLong(takenCol).takeIf { it > 0 } ?: (c.getLong(addedCol) * 1000)
+                    out += Clip(ContentUris.withAppendedId(uri, c.getLong(idCol)), dur, taken, name)
                 }
             }
         } catch (t: Throwable) {

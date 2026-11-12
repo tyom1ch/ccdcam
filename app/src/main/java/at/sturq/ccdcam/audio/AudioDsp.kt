@@ -30,6 +30,12 @@ enum class AudioProfile(
     val hissDb: Float,
     val drive: Float,
     val bits12: Boolean,
+    /** Bit crusher: sample-and-hold rate (0 = off), bits, wet share. Retro colour, not DV. */
+    val crushHz: Int = 0,
+    val crushBits: Int = 16,
+    val crushMix: Float = 0f,
+    /** 4th-order low cut (thin camcorder mic, no bass). */
+    val steepLowCut: Boolean = false,
 ) {
     /** Sony DV, 16 bit 48 kHz: full band, gentle AGC. */
     DV16_48K(48_000, 80f, 18_000f, 3_000f, 1.5f, true, -20f, 18f, 50f, 1_500f, -72f, 1.2f, false),
@@ -39,6 +45,13 @@ enum class AudioProfile(
 
     /** Small built-in mic, strong pumping AGC, audible preamp hiss. */
     LOFI(32_000, 180f, 7_000f, 2_500f, 4f, true, -16f, 26f, 20f, 800f, -58f, 2.0f, true),
+
+    /**
+     * Retro lo-fi: thin mic without lows, pumping AGC, slightly bit-crushed (19 kHz sample-hold
+     * without anti-aliasing, 10 bits, 60 % wet). Artistic, not a documented DV mode.
+     */
+    RETRO(48_000, 300f, 11_000f, 2_500f, 3f, true, -18f, 22f, 25f, 1_000f, -62f, 1.6f, false,
+        crushHz = 19_000, crushBits = 10, crushMix = 0.6f, steepLowCut = true),
 
     /** No processing (the file is left as recorded). */
     CLEAN(0, 0f, 0f, 0f, 0f, false, 0f, 0f, 0f, 0f, 0f, 1f, false);
@@ -162,6 +175,11 @@ class Resampler(private val inRate: Int, private val outRate: Int, private val c
 class AudioChain(private val profile: AudioProfile, private val inRate: Int, private val channels: Int, seed: Long = 1L) {
     private val outRate = if (profile.outRate > 0) profile.outRate else inRate
     private val hp = Array(channels) { Biquad.highPass(profile.hpHz, inRate) }
+    private val hp2 = Array(channels) { Biquad.highPass(profile.hpHz, inRate) }
+    private val crushStep = profile.crushHz.toDouble() / inRate
+    private var crushPhase = 1.0
+    private val held = FloatArray(channels)
+    private val crushLevels = (1 shl (profile.crushBits - 1)).toFloat()
     // 4th order (two sections): mic band limit and anti-alias before 32 kHz.
     private val lp = Array(channels) { Biquad.lowPass(minOf(profile.lpHz, inRate * 0.45f), inRate) }
     private val lp2 = Array(channels) { Biquad.lowPass(minOf(profile.lpHz, inRate * 0.45f), inRate) }
@@ -187,10 +205,21 @@ class AudioChain(private val profile: AudioProfile, private val inRate: Int, pri
         for (i in chunk.indices) {
             val ch = i % channels
             var s = hp[ch].process(chunk[i])
+            if (profile.steepLowCut) s = hp2[ch].process(s)
             s = pk[ch].process(s)
             s = lp2[ch].process(lp[ch].process(s))
             s += noise() * hiss
             if (profile.agc) s = agc[ch].process(s)
+            if (profile.crushHz > 0) {
+                // sample-and-hold at crushHz (aliasing on purpose), then coarse quantisation
+                if (ch == 0) {
+                    crushPhase += crushStep
+                    if (crushPhase >= 1.0) { crushPhase -= 1.0; for (c in 0 until channels) held[c] = Float.NaN }
+                }
+                if (held[ch].isNaN()) held[ch] = s
+                val q = kotlin.math.round(held[ch].coerceIn(-1f, 1f) * crushLevels) / crushLevels
+                s = s * (1 - profile.crushMix) + q * profile.crushMix
+            }
             y[i] = AudioMath.softClip(s, profile.drive)
         }
         val r = resampler.process(y)
