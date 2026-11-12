@@ -1,0 +1,86 @@
+package at.sturq.ccdcam.settings
+
+import android.content.SharedPreferences
+import at.sturq.ccdcam.profile.Profiles
+import org.junit.Assert.assertEquals
+import org.junit.Test
+
+class SettingsStoreTest {
+
+    @Test
+    fun freshInstallDefaultsToOriginalBehaviour() {
+        val store = SettingsStore(FakePrefs())
+        assertEquals(AspectSetting.RATIO_16_9, store.aspect)
+        assertEquals(Profiles.CCDCAM_DEFAULT, store.profile)
+    }
+
+    @Test
+    fun readsAspectWrittenByPreProfileVersion() {
+        // Pre-profile MainActivity wrote these exact strings under "aspect".
+        assertEquals(AspectSetting.RATIO_4_3, SettingsStore(FakePrefs(mapOf("aspect" to "4:3"))).aspect)
+        assertEquals(AspectSetting.RATIO_16_9, SettingsStore(FakePrefs(mapOf("aspect" to "16:9"))).aspect)
+        assertEquals(AspectSetting.RATIO_16_9, SettingsStore(FakePrefs(mapOf("aspect" to "garbage"))).aspect)
+    }
+
+    @Test
+    fun writesAspectInLegacyFormat() {
+        val prefs = FakePrefs()
+        val store = SettingsStore(prefs)
+        store.aspect = AspectSetting.RATIO_4_3
+        assertEquals("4:3", prefs.data["aspect"])
+        store.aspect = AspectSetting.RATIO_16_9
+        assertEquals("16:9", prefs.data["aspect"])
+    }
+
+    @Test
+    fun profileRoundTripAndUnknownFallback() {
+        val prefs = FakePrefs()
+        val store = SettingsStore(prefs)
+        store.profile = Profiles.HC90E_PAL
+        assertEquals("hc90e_pal", prefs.data["profile"])
+        assertEquals(Profiles.HC90E_PAL, store.profile)
+
+        prefs.data["profile"] = "removed-profile"
+        assertEquals(Profiles.CCDCAM_DEFAULT, store.profile)
+    }
+
+    /** Minimal in-memory SharedPreferences (strings only — all SettingsStore needs). */
+    private class FakePrefs(initial: Map<String, String> = emptyMap()) : SharedPreferences {
+        val data = initial.toMutableMap()
+
+        override fun getString(key: String?, defValue: String?): String? = key?.let { data[it] } ?: defValue
+        override fun contains(key: String?) = key != null && data.containsKey(key)
+        override fun getAll(): MutableMap<String, *> = data
+        override fun edit(): SharedPreferences.Editor = Editor()
+
+        override fun getStringSet(key: String?, defValues: MutableSet<String>?) = defValues
+        override fun getInt(key: String?, defValue: Int) = defValue
+        override fun getLong(key: String?, defValue: Long) = defValue
+        override fun getFloat(key: String?, defValue: Float) = defValue
+        override fun getBoolean(key: String?, defValue: Boolean) = defValue
+        override fun registerOnSharedPreferenceChangeListener(l: SharedPreferences.OnSharedPreferenceChangeListener?) {}
+        override fun unregisterOnSharedPreferenceChangeListener(l: SharedPreferences.OnSharedPreferenceChangeListener?) {}
+
+        inner class Editor : SharedPreferences.Editor {
+            private val pending = mutableMapOf<String, String?>()
+            override fun putString(key: String, value: String?): SharedPreferences.Editor {
+                pending[key] = value; return this
+            }
+            override fun remove(key: String): SharedPreferences.Editor {
+                pending[key] = null; return this
+            }
+            override fun apply() { commit() }
+            override fun commit(): Boolean {
+                for ((k, v) in pending) if (v == null) data.remove(k) else data[k] = v
+                pending.clear()
+                return true
+            }
+            override fun putStringSet(key: String, values: MutableSet<String>?) = this
+            override fun putInt(key: String, value: Int) = this
+            override fun putLong(key: String, value: Long) = this
+            override fun putFloat(key: String, value: Float) = this
+            override fun putBoolean(key: String, value: Boolean) = this
+            override fun clear() = this
+        }
+    }
+}
