@@ -48,3 +48,13 @@ ffprobe -v error -select_streams v:0 -show_entries frame=pkt_pts_time -of csv=p=
 ## 7. Profile-specific (stage 1 onward)
 - [ ] `CCDCAM_DEFAULT` looks identical to the previous release (side-by-side screenshot of
       the same scene, plus `python tools/calibrate.py before.mp4 after.mp4`).
+
+## 8. Effect space (stage 2 onward)
+Switch profile: long-press the bottom-left HUD label (`CCD CAM` / `HC90E PAL`). Switching is
+refused while recording; the choice survives an app restart.
+- [ ] `CCDCAM_DEFAULT` (`CCD CAM`): scanlines, grain size, vignette and colour identical to
+      stage 1 in preview, in the recorded MP4 and in photos (portrait and landscape).
+- [ ] `HC90E_PAL`: preview and recording work; note the scanline direction in preview and in
+      the MP4 for portrait and landscape recording (screenshots in the PR). Expected: lines follow
+      the output frame instead of the camera sensor.
+- [ ] Switching back and forth during preview does not freeze or black out the preview.

@@ -1,34 +1,43 @@
 #extension GL_OES_EGL_image_external : require
 precision highp float;
 
-varying vec2 vTexCoord;
+varying vec2 vTexCoord;   // camera texture space (after uTexMatrix + uStretch)
+varying vec2 vOutUv;      // output-surface space, 0..1
 uniform samplerExternalOES sTexture;
 uniform vec2 uResolution;
 uniform float uTime;
+uniform mat4 uTexMatrix;
+uniform float uStretch;
 
-// constants kept in sync with tools/sim.py
-// Subtler Sony-Handycam aesthetic — visible CCD character but the underlying scene is
-// still readable. Hi8/MiniDV had a softer look than full-on retro filters.
-const float CCD_X = 720.0;
-const float CCD_Y = 720.0;
-const float LINES = 480.0;
-const float SMEAR_THRESHOLD = 0.86;
-const float SMEAR_STRENGTH = 0.0;
+// Where the look is computed:
+//   0 = camera texture space (original CCDCam behaviour, CCDCAM_DEFAULT)
+//   1 = output-surface space, so lines/grid follow the output frame (HC90E_PAL)
+uniform float uEffectSpace;
+
+// Look parameters, fed every frame from CameraProfile.shader (profile/Profiles.kt).
+// CCDCAM_DEFAULT reproduces the former constants exactly; tools/sim.py mirrors them.
+uniform float uCcdX;
+uniform float uCcdY;
+uniform float uLines;
+uniform float uSmearThreshold;
+uniform float uSmearStrength;
+uniform float uSmearRange;
+uniform float uFlareThreshold;
+uniform float uFlareRange;
+uniform float uFlareStrength;
+uniform float uChromaNoiseAmp;
+uniform float uLumaGrainAmp;
+uniform float uBlackLift;
+uniform vec3  uWarmGrade;
+uniform float uSaturation;     // >1 boosts away from gray
+uniform float uContrast;       // around mid-gray
+uniform float uScanlineAmp;
+uniform float uVignetteStrength;
+uniform float uChromaShift;
+
+// GLSL ES 2.0 needs constant loop bounds, so sample counts stay compile-time constants.
 const int   SMEAR_SAMPLES = 8;
-const float SMEAR_RANGE = 0.38;
-const float FLARE_THRESHOLD = 0.90;
-const float FLARE_RANGE = 0.14;
 const int   FLARE_SAMPLES = 5;
-const float FLARE_STRENGTH = 0.30;
-const float CHROMA_NOISE_AMP = 0.02;
-const float LUMA_GRAIN_AMP = 0.05;
-const float BLACK_LIFT = 0.01;
-const vec3  WARM_GRADE = vec3(1.05, 1.01, 0.98);
-const float SATURATION = 0.98;     // >1 boosts away from gray
-const float CONTRAST = 1.15;       // around mid-gray
-const float SCANLINE_AMP = 0.025;
-const float VIGNETTE_STRENGTH = 0.35;
-const float CHROMA_SHIFT = 0.0003;
 
 float hash(vec2 p) {
     p = fract(p * vec2(123.34, 456.21));
@@ -39,65 +48,80 @@ float hash(vec2 p) {
 float luma(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
 
 vec2 ccdGrid(vec2 uv) {
-    vec2 cell = vec2(CCD_X, CCD_Y);
+    vec2 cell = vec2(uCcdX, uCcdY);
     return (floor(uv * cell) + 0.5) / cell;
 }
 
+// Effect-space coordinate -> camera texture coordinate. Identity in texture space; in output
+// space it repeats passthrough.vert's mapping (aTexCoord == output uv for our full-screen quad).
+vec2 toTex(vec2 p) {
+    if (uEffectSpace < 0.5) return p;
+    vec2 base = (uTexMatrix * vec4(p, 0.0, 1.0)).xy;
+    return vec2(0.5 + (base.x - 0.5) * uStretch, base.y);
+}
+
+vec4 sampleAt(vec2 p) { return texture2D(sTexture, toTex(p)); }
+
 float brightMask(vec2 uv, float threshold) {
     vec2 cl = clamp(ccdGrid(uv), vec2(0.001), vec2(0.999));
-    float l = luma(texture2D(sTexture, cl).rgb);
+    float l = luma(sampleAt(cl).rgb);
     return smoothstep(threshold, 1.0, l);
 }
 
 void main() {
-    vec2 baseUv = vTexCoord;
+    vec2 baseUv = (uEffectSpace < 0.5) ? vTexCoord : vOutUv;
     vec2 uv = ccdGrid(baseUv);
 
-    float r = texture2D(sTexture, ccdGrid(baseUv + vec2( CHROMA_SHIFT, 0.0))).r;
-    float g = texture2D(sTexture, uv).g;
-    float b = texture2D(sTexture, ccdGrid(baseUv + vec2(-CHROMA_SHIFT, 0.0))).b;
+    float r = sampleAt(ccdGrid(baseUv + vec2( uChromaShift, 0.0))).r;
+    float g = sampleAt(uv).g;
+    float b = sampleAt(ccdGrid(baseUv + vec2(-uChromaShift, 0.0))).b;
     vec3 col = vec3(r, g, b);
 
-    float smear = 0.0;
-    for (int i = 1; i <= SMEAR_SAMPLES; i++) {
-        float t = float(i) / float(SMEAR_SAMPLES);
-        float dy = t * SMEAR_RANGE;
-        float mu = brightMask(vec2(baseUv.x, baseUv.y - dy), SMEAR_THRESHOLD);
-        float md = brightMask(vec2(baseUv.x, baseUv.y + dy), SMEAR_THRESHOLD);
-        smear += max(mu, md) * (1.0 - t);
+    // Skipping at zero strength is exact: the result would be multiplied by 0.0 anyway.
+    if (uSmearStrength > 0.0) {
+        float smear = 0.0;
+        for (int i = 1; i <= SMEAR_SAMPLES; i++) {
+            float t = float(i) / float(SMEAR_SAMPLES);
+            float dy = t * uSmearRange;
+            float mu = brightMask(vec2(baseUv.x, baseUv.y - dy), uSmearThreshold);
+            float md = brightMask(vec2(baseUv.x, baseUv.y + dy), uSmearThreshold);
+            smear += max(mu, md) * (1.0 - t);
+        }
+        smear = smear / float(SMEAR_SAMPLES) * uSmearStrength;
+        col += vec3(smear * 0.9, smear * 0.95, smear * 1.1);
     }
-    smear = smear / float(SMEAR_SAMPLES) * SMEAR_STRENGTH;
-    col += vec3(smear * 0.9, smear * 0.95, smear * 1.1);
 
-    float flare = 0.0;
-    for (int i = 1; i <= FLARE_SAMPLES; i++) {
-        float t = float(i) / float(FLARE_SAMPLES);
-        float dx = t * FLARE_RANGE;
-        float ml = brightMask(vec2(baseUv.x - dx, baseUv.y), FLARE_THRESHOLD);
-        float mr = brightMask(vec2(baseUv.x + dx, baseUv.y), FLARE_THRESHOLD);
-        flare += max(ml, mr) * (1.0 - t) * (1.0 - t);
+    if (uFlareStrength > 0.0) {
+        float flare = 0.0;
+        for (int i = 1; i <= FLARE_SAMPLES; i++) {
+            float t = float(i) / float(FLARE_SAMPLES);
+            float dx = t * uFlareRange;
+            float ml = brightMask(vec2(baseUv.x - dx, baseUv.y), uFlareThreshold);
+            float mr = brightMask(vec2(baseUv.x + dx, baseUv.y), uFlareThreshold);
+            flare += max(ml, mr) * (1.0 - t) * (1.0 - t);
+        }
+        flare = flare / float(FLARE_SAMPLES) * uFlareStrength;
+        col += vec3(flare, flare, flare * 1.05);
     }
-    flare = flare / float(FLARE_SAMPLES) * FLARE_STRENGTH;
-    col += vec3(flare, flare, flare * 1.05);
 
-    float n = (hash(uv * uResolution + uTime) - 0.5) * CHROMA_NOISE_AMP;
+    float n = (hash(uv * uResolution + uTime) - 0.5) * uChromaNoiseAmp;
     col.r += n * 0.6;
     col.b -= n * 0.6;
 
-    float gr = (hash(uv * uResolution * 2.0 + uTime * 1.3) - 0.5) * LUMA_GRAIN_AMP;
+    float gr = (hash(uv * uResolution * 2.0 + uTime * 1.3) - 0.5) * uLumaGrainAmp;
     col += gr;
 
-    col = col * (1.0 - BLACK_LIFT) + BLACK_LIFT;
-    col *= WARM_GRADE;
-    col = (col - 0.5) * CONTRAST + 0.5;
+    col = col * (1.0 - uBlackLift) + uBlackLift;
+    col *= uWarmGrade;
+    col = (col - 0.5) * uContrast + 0.5;
     float l = luma(col);
-    col = mix(vec3(l), col, SATURATION);
+    col = mix(vec3(l), col, uSaturation);
 
-    float scan = (1.0 - SCANLINE_AMP) + SCANLINE_AMP * sin(uv.y * LINES * 3.14159);
+    float scan = (1.0 - uScanlineAmp) + uScanlineAmp * sin(uv.y * uLines * 3.14159);
     col *= scan;
 
     vec2 q = uv - 0.5;
-    col *= 1.0 - dot(q, q) * VIGNETTE_STRENGTH;
+    col *= 1.0 - dot(q, q) * uVignetteStrength;
 
     gl_FragColor = vec4(clamp(col, 0.0, 1.0), 1.0);
 }

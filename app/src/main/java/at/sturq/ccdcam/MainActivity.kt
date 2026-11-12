@@ -34,6 +34,7 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.core.content.ContextCompat
 import at.sturq.ccdcam.databinding.ActivityMainBinding
 import at.sturq.ccdcam.profile.CameraProfile
+import at.sturq.ccdcam.profile.Profiles
 import at.sturq.ccdcam.settings.AspectSetting
 import at.sturq.ccdcam.settings.SettingsStore
 import kotlinx.coroutines.CoroutineScope
@@ -56,7 +57,7 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var settings: SettingsStore
-    /** Active camera profile; read once per activity instance (switching UI comes later). */
+    /** Active camera profile. Long-press the bottom-left HUD label to cycle (test hook until the menu UI). */
     private lateinit var profile: CameraProfile
 
     private lateinit var ccdProcessor: CcdSurfaceProcessor
@@ -157,7 +158,12 @@ class MainActivity : AppCompatActivity() {
 
         ccdProcessor = CcdSurfaceProcessor(this)
         ccdEffect = CcdEffect(ccdProcessor)
-        applyAspectLabel()
+        applyProfile(profile)
+
+        binding.profileTxt.setOnLongClickListener {
+            cycleProfile()
+            true
+        }
 
         binding.aspectBtn.setOnClickListener { toggleAspect() }
         binding.flipBtn.setOnClickListener {
@@ -282,6 +288,26 @@ class MainActivity : AppCompatActivity() {
         // from a tighter horizontal sample range scaled to fill output width.
         ccdProcessor.stretch = profile.stretch
         binding.aspectBtn.text = if (aspectRatio == AspectRatio.RATIO_4_3) "4:3" else "16:9"
+    }
+
+    /** Pushes [p] to the GL processor and HUD. No camera rebind: only shader uniforms change. */
+    private fun applyProfile(p: CameraProfile) {
+        profile = p
+        ccdProcessor.profile = p
+        binding.profileTxt.text = p.hudLabel
+        applyAspectLabel()
+    }
+
+    private fun cycleProfile() {
+        if (recording != null) {
+            Toast.makeText(this, "Stop recording before switching profile", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val all = Profiles.ALL
+        val next = all[(all.indexOf(profile) + 1) % all.size]
+        settings.profile = next
+        applyProfile(next)
+        Toast.makeText(this, next.displayName, Toast.LENGTH_SHORT).show()
     }
 
     private fun updateZoomLabel(ratio: Float) {

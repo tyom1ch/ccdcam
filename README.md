@@ -61,8 +61,9 @@ Forest, shot on a Pixel through CCDCam:
 8. Scanline modulation tied to the vertical line count
 9. Radial vignette
 
-All constants live at the top of the file, so tuning the look is a one-liner. The same
-constants live in `tools/sim.py` so changes can be previewed in Python before rebuilding.
+The look parameters are uniforms fed every frame from the active camera profile
+(`app/src/main/java/at/sturq/ccdcam/profile/Profiles.kt`). The same values for the default
+CCDCam profile live in `tools/sim.py`, so changes can be previewed in Python before rebuilding.
 
 ## Architecture
 
@@ -93,8 +94,8 @@ Once published, F-Droid will be the recommended channel.
 
 ## Tweaking the look
 
-Edit the constants at the top of `app/src/main/assets/shaders/ccd.frag`, and mirror the same
-values in `tools/sim.py` (kept in sync by hand). Run the sim on a sample frame:
+Edit the profile values in `app/src/main/java/at/sturq/ccdcam/profile/Profiles.kt`, and mirror
+the `CCDCAM_DEFAULT` values in `tools/sim.py` (kept in sync by hand). Run the sim on a sample frame:
 
 ```
 python tools/sim.py input.jpg output.jpg
