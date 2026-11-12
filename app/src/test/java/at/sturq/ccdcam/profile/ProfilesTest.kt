@@ -33,6 +33,8 @@ class ProfilesTest {
         assertEquals(0.025f, p.scanlineAmp)
         assertEquals(0.35f, p.vignetteStrength)
         assertEquals(0.0003f, p.chromaShift)
+        // Added in stage 3; 0 keeps the original single-sample path.
+        assertEquals(0f, p.hBlur)
     }
 
     @Test
@@ -49,12 +51,26 @@ class ProfilesTest {
     }
 
     @Test
-    fun hc90eIsASeparateProfileInOutputSpace() {
+    fun hc90eIsASeparateProfileInPictureSpace() {
         assertNotEquals(Profiles.CCDCAM_DEFAULT.id, Profiles.HC90E_PAL.id)
         assertTrue(Profiles.ALL.contains(Profiles.HC90E_PAL))
         assertEquals(Profiles.ALL.size, Profiles.ALL.map { it.id }.toSet().size)
-        assertEquals(EffectSpace.OUTPUT, Profiles.HC90E_PAL.effectSpace)
+        assertEquals(EffectSpace.PICTURE, Profiles.HC90E_PAL.effectSpace)
         assertEquals(1f, Profiles.HC90E_PAL.effectSpace.uniformValue)
+    }
+
+    @Test
+    fun hc90ePalSpatialValues() {
+        val p = Profiles.HC90E_PAL
+        // PAL DV active picture grid and line count (docs/hc90e-reference.md).
+        assertEquals(720f, p.shader.ccdX)
+        assertEquals(576f, p.shader.ccdY)
+        assertEquals(576f, p.shader.lines)
+        assertTrue(p.shader.hBlur > 0f)
+        // No anamorphic squish: geometry must not deform objects.
+        assertEquals(1.0f, p.stretch)
+        // Real capture is still 30 fps; 25 fps timecode waits for the frame-rate stage.
+        assertEquals(30, p.timecodeFps)
     }
 
     @Test

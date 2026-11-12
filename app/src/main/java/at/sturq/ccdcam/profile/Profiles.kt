@@ -30,6 +30,7 @@ object Profiles {
             scanlineAmp = 0.025f,
             vignetteStrength = 0.35f,
             chromaShift = 0.0003f,
+            hBlur = 0f,
         ),
         effectSpace = EffectSpace.TEXTURE,
         stretch = 0.78f,
@@ -37,15 +38,27 @@ object Profiles {
     )
 
     /**
-     * Sony DCR-HC90E (PAL) emulation. Stage 2: same look values as CCDCAM_DEFAULT but
-     * computed in output space. PAL values (720x576 grid, 576 lines, 25 fps timecode,
-     * colour) arrive in later stages; see docs/hc90e-reference.md for what is documented.
+     * Sony DCR-HC90E (PAL) emulation.
+     *
+     * Stage 3 (spatial): the look is sampled on a 720x576 grid (PAL DV active picture,
+     * see docs/hc90e-reference.md) with 576 scanlines and a horizontal low-pass, computed
+     * in upright picture space, no anamorphic squish (stretch 1.0). The recorded file is
+     * still CameraX Recorder output (1280x720 H.264), NOT a 720x576 file.
+     * Colour, frame rate and interlace come in later stages; colour values are still
+     * CCDCam's for now. The timecode stays at 30 until real 25 fps capture exists.
      */
     val HC90E_PAL = CCDCAM_DEFAULT.copy(
         id = "hc90e_pal",
         displayName = "HC90E PAL",
         hudLabel = "HC90E PAL",
-        effectSpace = EffectSpace.OUTPUT,
+        effectSpace = EffectSpace.PICTURE,
+        stretch = 1.0f,
+        shader = CCDCAM_DEFAULT.shader.copy(
+            ccdX = 720f,
+            ccdY = 576f,
+            lines = 576f,
+            hBlur = 0.5f,
+        ),
     )
 
     val ALL: List<CameraProfile> = listOf(CCDCAM_DEFAULT, HC90E_PAL)

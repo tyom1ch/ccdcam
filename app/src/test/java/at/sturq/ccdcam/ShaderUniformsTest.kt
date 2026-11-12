@@ -26,6 +26,7 @@ class ShaderUniformsTest {
     /** Uniforms set directly by CcdSurfaceProcessor, not through LookUniforms. */
     private val processorUniforms = setOf(
         "sTexture", "uResolution", "uTime", "uTexMatrix", "uStretch", "uRotationRad",
+        "uBufferToEffect", "uEffectToBuffer",
     )
 
     @Test
@@ -59,9 +60,18 @@ class ShaderUniformsTest {
     }
 
     @Test
-    fun outputSpaceVaryingIsWired() {
-        assertTrue(Regex("""varying\s+vec2\s+vOutUv\s*;""").containsMatchIn(vert))
-        assertTrue(Regex("""varying\s+vec2\s+vOutUv\s*;""").containsMatchIn(frag))
-        assertTrue(vert.contains("vOutUv = aTexCoord.xy;"))
+    fun pictureSpaceVaryingIsWired() {
+        assertTrue(Regex("""varying\s+vec2\s+vEffectUv\s*;""").containsMatchIn(vert))
+        assertTrue(Regex("""varying\s+vec2\s+vEffectUv\s*;""").containsMatchIn(frag))
+        assertTrue(vert.contains("vEffectUv = (uBufferToEffect * vec3(aTexCoord.xy, 1.0)).xy;"))
+        assertEquals("mat3", uniformsOf(vert)["uBufferToEffect"])
+        assertEquals("mat3", uniformsOf(frag)["uEffectToBuffer"])
+    }
+
+    @Test
+    fun textureSpacePathIsUntouched() {
+        // CCDCam (uEffectSpace = 0) must keep sampling the camera texture directly.
+        assertTrue(frag.contains("if (uEffectSpace < 0.5) return p;"))
+        assertTrue(frag.contains("if (uHBlur <= 0.0) return sampleAt(p);"))
     }
 }

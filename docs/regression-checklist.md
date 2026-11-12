@@ -58,3 +58,29 @@ refused while recording; the choice survives an app restart.
       the MP4 for portrait and landscape recording (screenshots in the PR). Expected: lines follow
       the output frame instead of the camera sensor.
 - [ ] Switching back and forth during preview does not freeze or black out the preview.
+
+## 9. HC90E PAL geometry (stage 3 onward)
+The file is still CameraX `Recorder` output: **1280×720 H.264**, not 720×576. 720×576 is
+only the emulated sampling grid. Expected `ffprobe` size: 1280×720 (plus rotation metadata).
+
+Diagnostics: `adb logcat -s CcdProcessor` prints the processor buffer size, its
+`sensorToBuffer` rotation (expected 0 with StreamSharing) and, for every framing change,
+`uprightCw` (back camera on Pixel: 90 in portrait, 0 or 180 in landscape).
+
+For each cell, check: scanlines are **horizontal relative to the upright image**; circles stay
+round (no stretch); 4:3 shows black bars (pillarbox in landscape, letterbox in portrait);
+16:9 fills the 16:9 frame.
+
+| Aspect | Orientation | Preview | Recorded MP4 (played in Photos) |
+|---|---|---|---|
+| 16:9 | portrait  | [ ] | [ ] |
+| 16:9 | landscape | [ ] | [ ] |
+| 4:3  | portrait  | [ ] | [ ] |
+| 4:3  | landscape | [ ] | [ ] |
+
+- [ ] Rotate the phone **during** a recording: the effects in the preview stay locked to the
+      orientation the recording started with (VideoCapture also ignores rotation changes
+      mid-recording); after stop they follow the phone again.
+- [ ] Front camera: one portrait + one landscape clip, scanlines horizontal in the MP4.
+- [ ] `CCDCAM_DEFAULT`: identical to stage 2, including its original quirks (anamorphic
+      squish 0.78, 4:3 rebinding preview only, sensor-aligned scanlines).

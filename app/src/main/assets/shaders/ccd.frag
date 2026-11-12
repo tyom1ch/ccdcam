@@ -2,16 +2,18 @@
 precision highp float;
 
 varying vec2 vTexCoord;   // camera texture space (after uTexMatrix + uStretch)
-varying vec2 vOutUv;      // output-surface space, 0..1
+varying vec2 vEffectUv;   // upright picture space, 0..1 inside the picture (uEffectSpace = 1)
 uniform samplerExternalOES sTexture;
 uniform vec2 uResolution;
 uniform float uTime;
 uniform mat4 uTexMatrix;
 uniform float uStretch;
+uniform mat3 uEffectToBuffer;  // picture uv -> output buffer uv (geometry/EffectGeometry.kt)
 
 // Where the look is computed:
 //   0 = camera texture space (original CCDCam behaviour, CCDCAM_DEFAULT)
-//   1 = output-surface space, so lines/grid follow the output frame (HC90E_PAL)
+//   1 = upright picture space: lines/grid follow the image as viewed, picture is
+//       pillar/letterboxed to its aspect (HC90E_PAL)
 uniform float uEffectSpace;
 
 // Look parameters, fed every frame from CameraProfile.shader (profile/Profiles.kt).
@@ -34,6 +36,7 @@ uniform float uContrast;       // around mid-gray
 uniform float uScanlineAmp;
 uniform float uVignetteStrength;
 uniform float uChromaShift;
+uniform float uHBlur;          // horizontal low-pass, in CCD cells; 0 = original sampling
 
 // GLSL ES 2.0 needs constant loop bounds, so sample counts stay compile-time constants.
 const int   SMEAR_SAMPLES = 8;
@@ -52,15 +55,25 @@ vec2 ccdGrid(vec2 uv) {
     return (floor(uv * cell) + 0.5) / cell;
 }
 
-// Effect-space coordinate -> camera texture coordinate. Identity in texture space; in output
-// space it repeats passthrough.vert's mapping (aTexCoord == output uv for our full-screen quad).
+// Effect-space coordinate -> camera texture coordinate. Identity in texture space; in picture
+// space: picture uv -> buffer uv (uEffectToBuffer), then passthrough.vert's buffer -> texture
+// mapping (aTexCoord == buffer uv for our full-screen quad).
 vec2 toTex(vec2 p) {
     if (uEffectSpace < 0.5) return p;
-    vec2 base = (uTexMatrix * vec4(p, 0.0, 1.0)).xy;
+    vec2 buf = (uEffectToBuffer * vec3(p, 1.0)).xy;
+    vec2 base = (uTexMatrix * vec4(buf, 0.0, 1.0)).xy;
     return vec2(0.5 + (base.x - 0.5) * uStretch, base.y);
 }
 
 vec4 sampleAt(vec2 p) { return texture2D(sTexture, toTex(p)); }
+
+// One CCD cell, optionally low-passed horizontally (3 taps, 1-2-1). uHBlur == 0 is exactly
+// the original single sample.
+vec4 sampleCell(vec2 p) {
+    if (uHBlur <= 0.0) return sampleAt(p);
+    vec2 d = vec2(uHBlur / uCcdX, 0.0);
+    return 0.25 * sampleAt(p - d) + 0.5 * sampleAt(p) + 0.25 * sampleAt(p + d);
+}
 
 float brightMask(vec2 uv, float threshold) {
     vec2 cl = clamp(ccdGrid(uv), vec2(0.001), vec2(0.999));
@@ -69,12 +82,17 @@ float brightMask(vec2 uv, float threshold) {
 }
 
 void main() {
-    vec2 baseUv = (uEffectSpace < 0.5) ? vTexCoord : vOutUv;
+    vec2 baseUv = (uEffectSpace < 0.5) ? vTexCoord : vEffectUv;
+    if (uEffectSpace >= 0.5 &&
+        (baseUv.x < 0.0 || baseUv.x > 1.0 || baseUv.y < 0.0 || baseUv.y > 1.0)) {
+        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);   // pillar/letterbox outside the picture
+        return;
+    }
     vec2 uv = ccdGrid(baseUv);
 
-    float r = sampleAt(ccdGrid(baseUv + vec2( uChromaShift, 0.0))).r;
-    float g = sampleAt(uv).g;
-    float b = sampleAt(ccdGrid(baseUv + vec2(-uChromaShift, 0.0))).b;
+    float r = sampleCell(ccdGrid(baseUv + vec2( uChromaShift, 0.0))).r;
+    float g = sampleCell(uv).g;
+    float b = sampleCell(ccdGrid(baseUv + vec2(-uChromaShift, 0.0))).b;
     vec3 col = vec3(r, g, b);
 
     // Skipping at zero strength is exact: the result would be multiplied by 0.0 anyway.

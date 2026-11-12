@@ -40,6 +40,7 @@ class LookUniforms(program: Int) {
         GLES20.glUniform1f(loc("uScanlineAmp"), p.scanlineAmp)
         GLES20.glUniform1f(loc("uVignetteStrength"), p.vignetteStrength)
         GLES20.glUniform1f(loc("uChromaShift"), p.chromaShift)
+        GLES20.glUniform1f(loc("uHBlur"), p.hBlur)
     }
 
     companion object {
@@ -53,7 +54,7 @@ class LookUniforms(program: Int) {
             "uFlareThreshold", "uFlareRange", "uFlareStrength",
             "uChromaNoiseAmp", "uLumaGrainAmp",
             "uBlackLift", "uWarmGrade", "uSaturation", "uContrast",
-            "uScanlineAmp", "uVignetteStrength", "uChromaShift",
+            "uScanlineAmp", "uVignetteStrength", "uChromaShift", "uHBlur",
         )
     }
 }
