@@ -305,8 +305,9 @@ class FirmwareOsdView @JvmOverloads constructor(
             cassetteIconOn = (showRemaining || warn) && iconBlinkOn,
             dateTimeMs = dateTime,
             message = if (!forVideo && now < messageUntil) message else null,
-            nightShot = nightShot,
-            superNightShot = nightShot && s.superNs == FirmwareSettings.SUPER_NS_ON,
+            // NightShot is a camera function: no indicator or caption while playing tape.
+            nightShot = nightShot && nav.lamp != Lamp.PLAY_EDIT,
+            superNightShot = nightShot && nav.lamp != Lamp.PLAY_EDIT && s.superNs == FirmwareSettings.SUPER_NS_ON,
             faderArmed = !forVideo && nav.lamp == Lamp.TAPE && !recording &&
                 s.fader != FirmwareSettings.FADER_OFF,
             blinkOn = (now / 500) % 2 == 0L,

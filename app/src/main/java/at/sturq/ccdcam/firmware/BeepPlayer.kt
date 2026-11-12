@@ -134,6 +134,8 @@ class BeepPlayer(context: Context) {
 
     fun release() {
         executor.execute {
+            waiting.values.forEach { it.cancel(false) }
+            waiting.clear()
             tracks.values.forEach { runCatching { it.release() } }
             tracks.clear()
             playing.clear()

@@ -198,3 +198,8 @@ LIGHT is the phone torch and is independent of NightShot.
 - [ ] MENU / P-MENU show only working entries (TAPE, MEMORY, PLAY/EDIT each); no grayed rows.
 - [ ] Drum: ▼ goes to the next row in the order shown, ▲ back; stops at the first/last row.
 - [ ] Tape noise barely audible under the sound; RETRO sounds like the clips of 00:59.
+- [ ] Record, STOP: the clip appears in Movies/Handycam only after processing ("Saved to ..."),
+      complete, rotated, with the processed sound; no half-written file in the gallery.
+- [ ] Kill the app right after STOP: on next start the clip is published from files/rec.
+- [ ] PLAY/EDIT with NightShot on: no NightShot indicator or caption.
+- [ ] PLAY/EDIT, home, back: the clip shows the same frame, paused.

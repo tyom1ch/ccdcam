@@ -25,6 +25,8 @@ class PlaybackView @JvmOverloads constructor(
     private var uri: Uri? = null
     private var prepared = false
     private var startWhenPrepared = false
+    /** Position to return to when the surface comes back (app paused / resumed); -1 = none. */
+    private var resumeAtMs = -1
 
     private var onPrepared: MediaPlayer.OnPreparedListener? = null
     private var onCompletion: MediaPlayer.OnCompletionListener? = null
@@ -52,6 +54,7 @@ class PlaybackView @JvmOverloads constructor(
 
     fun setVideoURI(u: Uri) {
         uri = u
+        resumeAtMs = -1
         open()
     }
 
@@ -91,7 +94,10 @@ class PlaybackView @JvmOverloads constructor(
             p.setSurface(s)
             p.setOnPreparedListener { mp ->
                 prepared = true
-                onPrepared?.onPrepared(mp)
+                val resume = resumeAtMs
+                resumeAtMs = -1
+                // Same clip after the surface came back: just show the frame it was on (paused).
+                if (resume >= 0) mp.seekTo(resume) else onPrepared?.onPrepared(mp)
                 if (startWhenPrepared) { startWhenPrepared = false; mp.start() }
             }
             p.setOnCompletionListener { mp -> onCompletion?.onCompletion(mp) }
@@ -152,6 +158,7 @@ class PlaybackView @JvmOverloads constructor(
     override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, width: Int, height: Int) = updateTransform()
 
     override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
+        if (uri != null) resumeAtMs = currentPosition
         releasePlayer()
         return true
     }
