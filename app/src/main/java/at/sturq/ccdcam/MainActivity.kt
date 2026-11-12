@@ -103,28 +103,35 @@ class MainActivity : AppCompatActivity() {
     /** CW degrees to apply to PreviewView.bitmap before saving a photo (the bitmap is
      *  always in display orientation; we need to bake the physical rotation in). */
     @Volatile private var photoRotationCw: Int = 0
+    private val orientationStabilizer = at.sturq.ccdcam.camera.OrientationStabilizer()
+
+    /** Short fade out / in around the OSD turn instead of an instant flip. */
+    private fun turnOsd(cw: Int) {
+        val osd = binding.firmwareOsd
+        if (osd.deviceRotationCw == cw) return
+        osd.animate().cancel()
+        osd.animate().alpha(0f).setDuration(110).withEndAction {
+            osd.deviceRotationCw = cw
+            osd.animate().alpha(1f).setDuration(170).start()
+        }.start()
+    }
+
     private val orientationListener by lazy {
         object : OrientationEventListener(this) {
             override fun onOrientationChanged(orientation: Int) {
-                if (orientation == ORIENTATION_UNKNOWN) return
-                val rot = when {
-                    orientation < 45 -> Surface.ROTATION_0
-                    orientation < 135 -> Surface.ROTATION_270
-                    orientation < 225 -> Surface.ROTATION_180
-                    orientation < 315 -> Surface.ROTATION_90
+                // Hysteresis + hold time: shaking the phone or holding it diagonally must not flip the UI.
+                if (!orientationStabilizer.update(orientation, android.os.SystemClock.uptimeMillis())) return
+                photoRotationCw = orientationStabilizer.rotationCw
+                val rot = when (photoRotationCw) {
+                    90 -> Surface.ROTATION_270
+                    180 -> Surface.ROTATION_180
+                    270 -> Surface.ROTATION_90
                     else -> Surface.ROTATION_0
-                }
-                photoRotationCw = when {
-                    orientation < 45 -> 0
-                    orientation < 135 -> 90
-                    orientation < 225 -> 180
-                    orientation < 315 -> 270
-                    else -> 0
                 }
                 // The firmware display turns with the phone (the activity itself stays portrait,
                 // so rotating never recreates it or rebinds CameraX) — but not while recording:
                 // like the picture, it stays in the orientation the recording started with.
-                if (recordingRotation == null) binding.firmwareOsd.deviceRotationCw = photoRotationCw
+                if (recordingRotation == null) turnOsd(photoRotationCw)
                 if (rot != lastSurfaceRotation) {
                     lastSurfaceRotation = rot
                     if (recordingRotation == null) updateFraming()
@@ -479,7 +486,7 @@ class MainActivity : AppCompatActivity() {
                         if (!event.hasError()) finishClip(event.outputResults.outputUri, recordingDisplayCw)
                         recordingRotation = null
                         updateFraming()
-                        binding.firmwareOsd.deviceRotationCw = photoRotationCw   // follow the phone again
+                        turnOsd(photoRotationCw)   // follow the phone again
                         binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video)
                         val msg = if (event.hasError())
                             "Save error: ${event.error}"
