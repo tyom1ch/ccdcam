@@ -45,7 +45,7 @@ class HC90eMenuTest {
         assertTrue(item.isAvailable(Lamp.TAPE))
         assertEquals(listOf("OFF", "ON"), item.options.map { it.id })
         assertEquals("OFF", FirmwareSettings().valueOf(HC90eMenu.BURN_OSD))
-        assertTrue(HC90eMenu.BURN_OSD in HC90eMenu.page(HC90eMenu.pMenuCameraTape, 2))
+        assertTrue(HC90eMenu.BURN_OSD in HC90eMenu.pMenuFor(Lamp.TAPE))
         assertEquals(FirmwareSettings.BURN_OSD_ON, FirmwareSettings().with(HC90eMenu.BURN_OSD, "ON").burnOsd)
     }
 
@@ -101,8 +101,25 @@ class HC90eMenuTest {
             listOf("MENU", "DISP GUIDE", "TELE MACRO", "EXPOSURE", "SPOT FOCUS", "FADER"),
             HC90eMenu.page(HC90eMenu.pMenuCameraTape, 0),
         )
-        assertEquals(3, HC90eMenu.pageCount(HC90eMenu.pMenuCameraTape))   // "1/3"
-        assertEquals(HC90eMenu.P_MENU_SET_UP, HC90eMenu.pMenuCameraTape.last())
+    }
+
+    @Test
+    fun shownMenusHoldOnlyWorkingEntries() {
+        // P-MENU as shown: the documented order with the non-working entries left out.
+        val tape = HC90eMenu.pMenuFor(Lamp.TAPE)
+        assertEquals(listOf("MENU", "EXPOSURE", "SPOT FOCUS", "FADER", "SPOT METER", "WHITE BAL."), HC90eMenu.page(tape, 0))
+        assertEquals(3, HC90eMenu.pageCount(tape))
+        assertFalse("TELE MACRO" in tape)
+        assertFalse(HC90eMenu.P_MENU_SET_UP in tape)
+        assertEquals(listOf("MENU", "END SEARCH", "DATA CODE", "REC MODE", "REMAINING", "BEEP"), HC90eMenu.pMenuFor(Lamp.PLAY_EDIT))
+        // MENU drum as shown: working items of this lamp only, no empty categories.
+        for (lamp in Lamp.entries) {
+            val menu = HC90eMenu.categoriesFor(lamp)
+            assertTrue(menu.all { c -> c.items.isNotEmpty() && c.items.all { it.isAvailable(lamp) } })
+        }
+        assertFalse(HC90eMenu.categoriesFor(Lamp.TAPE).any { c -> c.items.any { it.id == HC90eMenu.DATA_CODE } })
+        assertTrue(HC90eMenu.categoriesFor(Lamp.PLAY_EDIT).any { c -> c.items.any { it.id == HC90eMenu.DATA_CODE } })
+        assertFalse(HC90eMenu.categoriesFor(Lamp.TAPE).any { it.id == "TIME/LANGU." })
     }
 
     @Test

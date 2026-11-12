@@ -394,11 +394,12 @@ class FirmwareOsdView @JvmOverloads constructor(
 
         val names: List<String>
         val enabledAt: (Int) -> Boolean
+        val menu = nav.menu
         if (categoryLevel) {
-            names = HC90eMenu.categories.map { it.label }
+            names = menu.map { it.label }
             enabledAt = { true }
         } else {
-            val items = HC90eMenu.categories[category].items
+            val items = menu[category].items
             names = items.map { it.label }
             enabledAt = { items[it].isAvailable(nav.lamp) }
         }
@@ -412,7 +413,9 @@ class FirmwareOsdView @JvmOverloads constructor(
             if (k == 0) continue
             val angle = k * step
             if (abs(angle) >= Math.PI / 2) continue
-            val idx = ((index + k) % n + n) % n
+            // A list, not a loop: rows past the ends stay empty (no repeated entries).
+            val idx = index + k
+            if (idx < 0 || idx >= n) continue
             val y = centerY + (radius * sin(angle)).toFloat()
             val scale = cos(angle).toFloat()
             val size = LcdLayout.OSD_TEXT * lcd.height * 1.05f * scale
@@ -431,7 +434,7 @@ class FirmwareOsdView @JvmOverloads constructor(
         plainText(c, names[index], bar.left + 0.06f * drum.width, bar.centerY + selSize * 0.36f, selSize,
             if (enabledAt(index)) Color.BLACK else grayText)
         if (!categoryLevel) {
-            val item = HC90eMenu.categories[category].items[index]
+            val item = menu[category].items[index]
             nav.settings.valueOf(item.id)?.let { v ->
                 val label = item.options.firstOrNull { it.id == v }?.label ?: v
                 val tag = Box(bar.right - 0.30f * lcd.width, bar.bottom, bar.right, bar.bottom + 0.085f * lcd.height)
@@ -441,7 +444,7 @@ class FirmwareOsdView @JvmOverloads constructor(
             }
         } else {
             // Category level: first items of the selected category under the bar (guide p. 34 ①).
-            val preview = HC90eMenu.categories[index].items.take(3).map { it.label }
+            val preview = menu[index].items.take(3).map { it.label }
             val ps = LcdLayout.OSD_TEXT * lcd.height * 0.62f
             preview.forEachIndexed { i, label ->
                 plainText(c, label, bar.left + 0.30f * drum.width, bar.bottom + ps * (1.25f + i * 1.05f), ps, Color.WHITE)
@@ -449,7 +452,7 @@ class FirmwareOsdView @JvmOverloads constructor(
         }
 
         // Category icon column on the left (rotating cylinder of pictograms).
-        drawCategoryIcons(c, if (categoryLevel) index else category, centerY)
+        drawCategoryIcons(c, menu, if (categoryLevel) index else category, centerY)
 
         button(c, b(LcdLayout.DRUM_UP), Style.CYAN, icon = { cv, bx -> triangle(cv, bx, up = true) }) { nav.drumStep(down = false) }
         button(c, b(LcdLayout.DRUM_DOWN), Style.CYAN, icon = { cv, bx -> triangle(cv, bx, up = false) }) { nav.drumStep(down = true) }
@@ -458,12 +461,14 @@ class FirmwareOsdView @JvmOverloads constructor(
         button(c, b(LcdLayout.MENU_OK), Style.CYAN, label = "OK") { listener?.onNavEffect(nav.ok()) }
     }
 
-    private fun drawCategoryIcons(c: Canvas, selected: Int, centerY: Float) {
-        val n = HC90eMenu.categories.size
+    private fun drawCategoryIcons(c: Canvas, menu: List<MenuCategory>, selected: Int, centerY: Float) {
+        val n = menu.size
         val x = lcd.left + 0.150f * lcd.width
         val step = 0.105f * lcd.height
         for (k in -3..3) {
-            val idx = ((selected + k) % n + n) % n
+            val pos = selected + k
+            if (pos < 0 || pos >= n) continue
+            val idx = HC90eMenu.iconIndex(menu[pos].id)
             val scale = if (k == 0) 1.25f else 1f - abs(k) * 0.12f
             val s = 0.060f * lcd.height * scale
             val y = centerY + k * step * (1f - abs(k) * 0.08f)
@@ -782,6 +787,14 @@ class FirmwareOsdView @JvmOverloads constructor(
                 path.moveTo(cx - s * 0.25f, cy - s * 0.2f); path.lineTo(cx - s * 0.25f, cy - s * 0.45f)
                 path.lineTo(cx + s * 0.25f, cy - s * 0.45f); path.lineTo(cx + s * 0.25f, cy - s * 0.2f)
                 path.moveTo(cx - s * 0.7f, cy + s * 0.05f); path.lineTo(cx + s * 0.7f, cy + s * 0.05f)
+            }
+            6 -> { // CCD LOOK (app): sensor chip with pixel grid
+                path.addRect(cx - s * 0.5f, cy - s * 0.4f, cx + s * 0.5f, cy + s * 0.4f, Path.Direction.CW)
+                for (i in 1..2) {
+                    val gx = cx - s * 0.5f + i * s / 3f
+                    path.moveTo(gx, cy - s * 0.4f); path.lineTo(gx, cy + s * 0.4f)
+                }
+                path.moveTo(cx - s * 0.5f, cy); path.lineTo(cx + s * 0.5f, cy)
             }
             else -> { // TIME/LANGU.: clock
                 path.addCircle(cx, cy, s * 0.45f, Path.Direction.CW)

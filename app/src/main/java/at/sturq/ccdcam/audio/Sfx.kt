@@ -71,7 +71,7 @@ class SfxMixer(
 
     companion object {
         /** Tape loop is stored at -30 dBFS RMS; -12 dB puts the motor ~-42 dBFS under the audio. */
-        val LOOP_GAIN = AudioMath.dbToLin(-27f)
+        val LOOP_GAIN = AudioMath.dbToLin(-41f)
         /** UI sounds are stored at -3 dBFS peak; burned in ~10 dB lower, like through the mic. */
         val EVENT_GAIN = AudioMath.dbToLin(-10f)
     }

@@ -76,6 +76,14 @@ DATE/TIME / CAMERA DATA · `REMAINING` AUTO (about 8 s) / ON · `BEEP` ON ("a me
 you start/stop recording, or operate the touch panel") / OFF · `MENU ROTATE` NORMAL / OPPOSITE ·
 `A.SHUT OFF` 5 min / NEVER · `GUIDEFRAME` OFF / ON (frame not recorded).
 
+## Deviations for usability (app decisions)
+- MENU and P-MENU list only what works in the current lamp; unimplemented guide items and
+  empty categories are hidden (the guide grays them out). `HC90eMenu.categories` keeps the
+  full guide tree.
+- Drum: ▼ selects the next row in list order and the list stops at its ends (the HC90E rolls
+  the other way and loops); MENU ROTATE OPPOSITE swaps the buttons.
+- UI sounds: one voice, a new sound cuts the previous one (fast taps stay crisp).
+
 ## App settings (not on the HC90E) — Approximation
 - Category `CCD LOOK` after TIME/LANGU.: SCANLINES STD/OFF/LOW/HIGH, INTERLACE ON/OFF,
   CCD NOISE STD/LOW/HIGH, CCD SMEAR OFF/ON (vertical streaks from bright lights, typical of
