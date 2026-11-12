@@ -1,5 +1,7 @@
 package at.sturq.ccdcam.firmware
 
+import at.sturq.ccdcam.audio.AudioProfile
+
 /** POWER switch lamps (guide p. 34). */
 enum class Lamp { TAPE, MEMORY, PLAY_EDIT }
 
@@ -19,10 +21,30 @@ data class FirmwareSettings(
     val whiteBal: String = WB_AUTO,
     /** PICT.APPLI. > FADER: armed fader, cleared after a fade-out. */
     val fader: String = FADER_OFF,
+    /** CAMERA SET > SUPER NS (works with the NIGHTSHOT switch on). */
+    val superNs: String = SUPER_NS_OFF,
+    /** App setting: camcorder sound emulation applied after recording. */
+    val audioEmu: String = AUDIO_EMU_DV,
+    /** App setting: REPLACE the clip's sound, or KEEP the original and save a processed copy. */
+    val origAudio: String = ORIG_AUDIO_REPLACE,
+    /** App setting: tape-mechanism loop mixed under the recording. */
+    val tapeNoise: String = ON,
+    /** Values of HC90eMenu.TWEAKS items (missing = first option, the stock look). */
+    val tweaks: Map<String, String> = emptyMap(),
     val cassette: VirtualCassette? = VirtualCassette.fresh(),
 ) {
     val beepOn: Boolean get() = beep == BEEP_ON
+
+    /** Sound profile: DV follows AUDIO MODE (12BIT -> 32 kHz, 16BIT -> 48 kHz). */
+    fun audioProfile(): AudioProfile = when (audioEmu) {
+        AUDIO_EMU_CLEAN -> AudioProfile.CLEAN
+        AUDIO_EMU_LOFI -> AudioProfile.LOFI
+        AUDIO_EMU_RETRO -> AudioProfile.RETRO
+        else -> if (audioMode == AUDIO_16BIT) AudioProfile.DV16_48K else AudioProfile.DV12_32K
+    }
     val burnOsdOn: Boolean get() = burnOsd == BURN_OSD_ON
+
+    fun tweak(itemId: String): String = tweaks[itemId] ?: HC90eMenu.item(itemId).options.first().id
 
     /** Current value (option id) of a menu item, or null if the item has no stored value. */
     fun valueOf(itemId: String): String? = when (itemId) {
@@ -36,6 +58,11 @@ data class FirmwareSettings(
         HC90eMenu.EXPOSURE -> exposure
         HC90eMenu.WHITE_BAL -> whiteBal
         HC90eMenu.FADER -> fader
+        HC90eMenu.SUPER_NS -> superNs
+        HC90eMenu.AUDIO_EMU -> audioEmu
+        HC90eMenu.ORIG_AUDIO -> origAudio
+        HC90eMenu.TAPE_NOISE -> tapeNoise
+        in HC90eMenu.TWEAKS -> tweak(itemId)
         else -> null
     }
 
@@ -54,6 +81,11 @@ data class FirmwareSettings(
             HC90eMenu.EXPOSURE -> copy(exposure = optionId)
             HC90eMenu.WHITE_BAL -> copy(whiteBal = optionId)
             HC90eMenu.FADER -> copy(fader = optionId)
+            HC90eMenu.SUPER_NS -> copy(superNs = optionId)
+            HC90eMenu.AUDIO_EMU -> copy(audioEmu = optionId)
+            HC90eMenu.ORIG_AUDIO -> copy(origAudio = optionId)
+            HC90eMenu.TAPE_NOISE -> copy(tapeNoise = optionId)
+            in HC90eMenu.TWEAKS -> copy(tweaks = tweaks + (itemId to optionId))
             else -> throw IllegalArgumentException("$itemId has no stored value")
         }
     }
@@ -78,6 +110,16 @@ data class FirmwareSettings(
         const val WB_INDOOR = "INDOOR"
         const val WB_OUTDOOR = "OUTDOOR"
         const val FADER_OFF = "OFF"
+        const val SUPER_NS_OFF = "OFF"
+        const val SUPER_NS_ON = "ON"
+        const val AUDIO_EMU_DV = "DV"
+        const val AUDIO_EMU_LOFI = "LO-FI"
+        const val AUDIO_EMU_RETRO = "RETRO"
+        const val AUDIO_EMU_CLEAN = "CLEAN"
+        const val ORIG_AUDIO_REPLACE = "REPLACE"
+        const val ORIG_AUDIO_KEEP = "KEEP"
+        const val OFF = "OFF"
+        const val ON = "ON"
         const val FADER_BLACK = "BLACK FADER"
         const val FADER_WHITE = "WHITE FADER"
     }

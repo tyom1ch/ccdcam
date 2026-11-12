@@ -29,6 +29,7 @@ class Interlacer(context: Context) {
     private var uPrev = -1
     private var uB2E = -1
     private var uLines = -1
+    private var uBlend = -1
 
     private fun ensureProgram() {
         if (program != 0) return
@@ -39,6 +40,7 @@ class Interlacer(context: Context) {
         uPrev = GLES20.glGetUniformLocation(program, "sPrev")
         uB2E = GLES20.glGetUniformLocation(program, "uBufferToEffect")
         uLines = GLES20.glGetUniformLocation(program, "uLines")
+        uBlend = GLES20.glGetUniformLocation(program, "uBlend")
     }
 
     fun create(width: Int, height: Int): Target {
@@ -74,21 +76,45 @@ class Interlacer(context: Context) {
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, t.fbo[t.cur])
     }
 
-    /** Draws the woven frame into the window surface (framebuffer 0) and swaps the pair. */
-    fun finish(t: Target, bufferToEffect: FloatArray, lines: Float, quad: FloatBuffer, uv: FloatBuffer) {
+    /**
+     * Draws the woven frame (or, with [blend] > 0, the Super NightShot mix of the previous and
+     * this frame) into the window surface (framebuffer 0) and swaps the pair.
+     */
+    fun finish(
+        t: Target, bufferToEffect: FloatArray, lines: Float, quad: FloatBuffer, uv: FloatBuffer,
+        blend: Float = 0f,
+    ) {
+        draw(t, t.cur, if (t.hasPrev) 1 - t.cur else t.cur, bufferToEffect, lines, quad, uv, blend)
+        t.hasPrev = true
+        t.cur = 1 - t.cur
+    }
+
+    /** Re-presents the last finished frame without rendering a new one (slow-shutter hold). */
+    fun present(
+        t: Target, bufferToEffect: FloatArray, lines: Float, quad: FloatBuffer, uv: FloatBuffer,
+        blend: Float = 0f,
+    ) {
+        // after finish(): newest = 1 - cur, the one before = cur (not overwritten yet)
+        draw(t, 1 - t.cur, t.cur, bufferToEffect, lines, quad, uv, blend)
+    }
+
+    private fun draw(
+        t: Target, curIdx: Int, prevIdx: Int, bufferToEffect: FloatArray, lines: Float,
+        quad: FloatBuffer, uv: FloatBuffer, blend: Float,
+    ) {
         ensureProgram()
         GLES20.glBindFramebuffer(GLES20.GL_FRAMEBUFFER, 0)
         GLES20.glViewport(0, 0, t.width, t.height)
         GLES20.glUseProgram(program)
-        val prev = if (t.hasPrev) 1 - t.cur else t.cur
         GLES20.glActiveTexture(GLES20.GL_TEXTURE2)
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, t.tex[t.cur])
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, t.tex[curIdx])
         GLES20.glUniform1i(uCur, 2)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE3)
-        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, t.tex[prev])
+        GLES20.glBindTexture(GLES20.GL_TEXTURE_2D, t.tex[prevIdx])
         GLES20.glUniform1i(uPrev, 3)
         GLES20.glUniformMatrix3fv(uB2E, 1, false, bufferToEffect, 0)
         GLES20.glUniform1f(uLines, lines)
+        GLES20.glUniform1f(uBlend, blend)
         quad.position(0)
         GLES20.glEnableVertexAttribArray(aPos)
         GLES20.glVertexAttribPointer(aPos, 2, GLES20.GL_FLOAT, false, 0, quad)
@@ -99,12 +125,17 @@ class Interlacer(context: Context) {
         GLES20.glDisableVertexAttribArray(aPos)
         GLES20.glDisableVertexAttribArray(aTex)
         GLES20.glActiveTexture(GLES20.GL_TEXTURE0)
-        t.hasPrev = true
-        t.cur = 1 - t.cur
     }
 
     companion object {
         private const val TAG = "Interlacer"
+
+        /** Super NightShot: a new picture every [SNS_HOLD] frames, mixed [SNS_BLEND] with the last. */
+        const val SNS_HOLD = 4
+        const val SNS_BLEND = 0.55f
+
+        /** True if frame number [n] (from 0) only repeats the last picture. */
+        fun isHeldFrame(n: Long, hold: Int = SNS_HOLD): Boolean = n % hold != 0L
 
         /** Field of a picture line (y = upright picture uv, 0 bottom): 0 = this frame, 1 = previous. */
         fun fieldOf(pictureY: Float, lines: Float): Int = (Math.floor(pictureY * lines.toDouble()).toLong() % 2).toInt()

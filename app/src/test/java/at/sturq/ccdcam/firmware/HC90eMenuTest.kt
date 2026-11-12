@@ -10,9 +10,26 @@ class HC90eMenuTest {
     @Test
     fun categoriesInGuideOrderWithGuideLabels() {
         assertEquals(
-            listOf("CAMERA SET", "MEMORY SET", "PICT.APPLI.", "EDIT/PLAY", "STANDARD SET", "TIME/LANGU."),
-            HC90eMenu.categories.map { it.label },
+            listOf("CAMERA SET", "MEMORY SET", "PICT.APPLI.", "EDIT/PLAY", "STANDARD SET", "TIME/LANGU.", "CCD LOOK"),
+            HC90eMenu.categories.map { it.label },  // the app's CCD LOOK comes after the guide's six
         )
+    }
+
+    @Test
+    fun lookTweaksDefaultToTheStockLook() {
+        val d = FirmwareSettings()
+        assertEquals(at.sturq.ccdcam.profile.Profiles.HC90E_PAL, LookTweaks.profile(d))
+        assertEquals(1f, LookTweaks.beepVolume(d))
+        val t = d.with(HC90eMenu.SCANLINES, LookTweaks.OFF).with(HC90eMenu.INTERLACE, LookTweaks.OFF)
+            .with(HC90eMenu.CCD_SMEAR, LookTweaks.ON).with(HC90eMenu.BEEP_VOL, LookTweaks.LOW)
+        val p = LookTweaks.profile(t).shader
+        assertEquals(0f, p.scanlineAmp)
+        assertEquals(0f, p.interlace)
+        assertTrue(p.smearStrength > 0f)
+        assertTrue(LookTweaks.beepVolume(t) < 0.5f)
+        assertEquals(LookTweaks.OFF, t.valueOf(HC90eMenu.SCANLINES))
+        assertEquals(LookTweaks.STD, t.valueOf(HC90eMenu.SHARPNESS))
+        for (id in HC90eMenu.TWEAKS) assertTrue(id, HC90eMenu.item(id).isAvailable(Lamp.TAPE))
     }
 
     @Test
@@ -37,6 +54,21 @@ class HC90eMenuTest {
         assertEquals("Movies/Handycam", Hc90eController.MOVIES_DIR)
         assertEquals("Pictures/Handycam", Hc90eController.PICTURES_DIR)
         assertEquals("Movies/CCDCam", Hc90eController.LEGACY_MOVIES_DIR)
+    }
+
+    @Test
+    fun audioEmulationSettings() {
+        val d = FirmwareSettings()
+        // defaults: DV sound, 12BIT (Sony default) -> 32 kHz profile, original replaced
+        assertEquals(at.sturq.ccdcam.audio.AudioProfile.DV12_32K, d.audioProfile())
+        assertEquals(at.sturq.ccdcam.audio.AudioProfile.DV16_48K,
+            d.with(HC90eMenu.AUDIO_MODE, FirmwareSettings.AUDIO_16BIT).audioProfile())
+        assertEquals(at.sturq.ccdcam.audio.AudioProfile.LOFI,
+            d.with(HC90eMenu.AUDIO_EMU, FirmwareSettings.AUDIO_EMU_LOFI).audioProfile())
+        assertEquals(at.sturq.ccdcam.audio.AudioProfile.CLEAN,
+            d.with(HC90eMenu.AUDIO_EMU, FirmwareSettings.AUDIO_EMU_CLEAN).audioProfile())
+        assertEquals(FirmwareSettings.ORIG_AUDIO_REPLACE, d.origAudio)
+        assertTrue(HC90eMenu.item(HC90eMenu.AUDIO_EMU).isAvailable(Lamp.TAPE))
     }
 
     @Test
@@ -97,6 +129,7 @@ class HC90eMenuTest {
         // stage 10: first P-MENU page comes alive
         for (e in listOf("EXPOSURE", "SPOT FOCUS", "FADER")) assertTrue(e, HC90eMenu.pMenuEntryAvailable(e, Lamp.TAPE))
         assertFalse(HC90eMenu.pMenuEntryAvailable("FADER", Lamp.MEMORY))
+        assertTrue(HC90eMenu.pMenuEntryAvailable("SUPER NS", Lamp.TAPE))
         assertTrue(HC90eMenu.pMenuEntryAvailable(HC90eMenu.REC_MODE, Lamp.TAPE))
         assertFalse(HC90eMenu.pMenuEntryAvailable(HC90eMenu.DATA_CODE, Lamp.TAPE))  // playback only
         assertTrue(HC90eMenu.pMenuEntryAvailable(HC90eMenu.DATA_CODE, Lamp.PLAY_EDIT))

@@ -164,3 +164,28 @@ LIGHT is the phone torch and is independent of NightShot.
 - [ ] LIGHT toggles the torch on the back camera; front camera: "No light on this camera".
 - [ ] Flip camera / PLAY/EDIT and back: NightShot stays as set, torch comes back if it was on.
 - [ ] Recording, A/V sync and 25p unchanged with NightShot on.
+
+## 16. Super NightShot + audio emulator (stage 13)
+- [ ] NIGHTSHOT on + SUPER NS ON: picture renews ~6x per second with trails, brighter and
+      noisier, caption SUPER NIGHTSHOT; recording keeps 25p and sound.
+- [ ] AUDIO EMU DV (default; AUDIO MODE 12BIT -> 32 kHz, 16BIT -> 48 kHz), LO-FI, CLEAN:
+      after STOP the clip is re-saved with the processed sound (`adb logcat -s HC90eMain`:
+      `clip audio ... ok=true`); `ffprobe` shows aac at 32000 / 48000 Hz; video untouched
+      (same frame count, 25 fps), rotation correct.
+- [ ] ORIG AUDIO KEEP: original clip unchanged + `<name>_dv.mp4` with processed sound.
+- [ ] A/V sync after processing (clap test), no clicks at chunk borders.
+- [ ] AUDIO EMU RETRO: no low end, band ends ~9.5 kHz, slightly crunchy (19 kHz crusher with
+      ADC/DAC filters, 8 bits, 40 % wet), AGC pumping; no clipping.
+
+## 17. DATA CODE, rotation, UI sounds (final)
+- [ ] Record a scene, PLAY/EDIT, P-MENU page 2 -> DATA CODE DATE/TIME: date/time of the frame
+      (advances with playback). CAMERA DATA: `AUTO AWB 100 F1.8 0dB`-style values that change
+      with the light during the scene; older scenes without data show `--` placeholders.
+- [ ] Shaking the phone does not flip the OSD; a deliberate turn rotates it after ~0.4 s with
+      a short fade. During recording the OSD stays fixed.
+- [ ] Touch keys: click on press, declick on release; REC start/stop sound; sounds audible with
+      the ringer silent (media volume). Tape noise in the clip is quiet.
+- [ ] MENU -> CCD LOOK: each item changes preview and recording the same way (SCANLINES OFF,
+      INTERLACE OFF, CCD SMEAR ON on a lamp, COLOR VIVID...); defaults = previous look.
+      CAMERA SET -> SHARPNESS SOFT/SHARP. STANDARD SET -> BEEP VOL LOW/MID/HIGH.
+- [ ] REC start/stop sound at 1/5 of the level of the other keys.

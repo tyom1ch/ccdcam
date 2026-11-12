@@ -76,6 +76,13 @@ class ShaderUniformsTest {
         assertEquals("sampler2D", u["sPrev"])
         assertEquals("mat3", u["uBufferToEffect"])
         assertEquals("float", u["uLines"])
+        assertEquals("float", u["uBlend"])
+    }
+
+    @Test
+    fun superNightShotHoldsThreeOfFourFrames() {
+        val held = (0L until 8L).map { Interlacer.isHeldFrame(it) }
+        assertEquals(listOf(false, true, true, true, false, true, true, true), held)
     }
 
     @Test

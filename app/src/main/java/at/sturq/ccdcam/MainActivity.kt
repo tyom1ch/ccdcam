@@ -27,6 +27,11 @@ import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import android.hardware.camera2.CameraMetadata
 import android.hardware.camera2.CaptureRequest
 import at.sturq.ccdcam.firmware.FirmwareSettings
+import at.sturq.ccdcam.firmware.CameraDataFormat
+import at.sturq.ccdcam.firmware.CameraDataLog
+import at.sturq.ccdcam.firmware.CameraDataStore
+import at.sturq.ccdcam.audio.ClipAudioProcessor
+import at.sturq.ccdcam.audio.SfxMixer
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.core.UseCaseGroup
@@ -101,28 +106,49 @@ class MainActivity : AppCompatActivity() {
     /** CW degrees to apply to PreviewView.bitmap before saving a photo (the bitmap is
      *  always in display orientation; we need to bake the physical rotation in). */
     @Volatile private var photoRotationCw: Int = 0
+    private val orientationStabilizer = at.sturq.ccdcam.camera.OrientationStabilizer()
+
+    private val cameraDataLog = CameraDataLog()
+    private val captureDataCallback = object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
+        override fun onCaptureCompleted(
+            session: android.hardware.camera2.CameraCaptureSession,
+            request: CaptureRequest,
+            result: android.hardware.camera2.TotalCaptureResult,
+        ) {
+            val exp = result.get(android.hardware.camera2.CaptureResult.SENSOR_EXPOSURE_TIME) ?: return
+            val iso = result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY) ?: return
+            val ap = result.get(android.hardware.camera2.CaptureResult.LENS_APERTURE) ?: CameraDataFormat.MIN_F
+            cameraDataLog.onFrame(android.os.SystemClock.uptimeMillis(), exp, iso, ap)
+        }
+    }
+
+    /** Short fade out / in around the OSD turn instead of an instant flip. */
+    private fun turnOsd(cw: Int) {
+        val osd = binding.firmwareOsd
+        if (osd.deviceRotationCw == cw) return
+        osd.animate().cancel()
+        osd.animate().alpha(0f).setDuration(110).withEndAction {
+            osd.deviceRotationCw = cw
+            osd.animate().alpha(1f).setDuration(170).start()
+        }.start()
+    }
+
     private val orientationListener by lazy {
         object : OrientationEventListener(this) {
             override fun onOrientationChanged(orientation: Int) {
-                if (orientation == ORIENTATION_UNKNOWN) return
-                val rot = when {
-                    orientation < 45 -> Surface.ROTATION_0
-                    orientation < 135 -> Surface.ROTATION_270
-                    orientation < 225 -> Surface.ROTATION_180
-                    orientation < 315 -> Surface.ROTATION_90
+                // Hysteresis + hold time: shaking the phone or holding it diagonally must not flip the UI.
+                if (!orientationStabilizer.update(orientation, android.os.SystemClock.uptimeMillis())) return
+                photoRotationCw = orientationStabilizer.rotationCw
+                val rot = when (photoRotationCw) {
+                    90 -> Surface.ROTATION_270
+                    180 -> Surface.ROTATION_180
+                    270 -> Surface.ROTATION_90
                     else -> Surface.ROTATION_0
-                }
-                photoRotationCw = when {
-                    orientation < 45 -> 0
-                    orientation < 135 -> 90
-                    orientation < 225 -> 180
-                    orientation < 315 -> 270
-                    else -> 0
                 }
                 // The firmware display turns with the phone (the activity itself stays portrait,
                 // so rotating never recreates it or rebinds CameraX) — but not while recording:
                 // like the picture, it stays in the orientation the recording started with.
-                if (recordingRotation == null) binding.firmwareOsd.deviceRotationCw = photoRotationCw
+                if (recordingRotation == null) turnOsd(photoRotationCw)
                 if (rot != lastSurfaceRotation) {
                     lastSurfaceRotation = rot
                     if (recordingRotation == null) updateFraming()
@@ -283,6 +309,7 @@ class MainActivity : AppCompatActivity() {
         return wanted.filterNot(this::isGranted).toTypedArray()
     }
 
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
     private fun bindCamera() {
         if (!hasPerms()) return
         if (hc.cameraSuspended) return   // PLAY/EDIT: camera section off
@@ -308,8 +335,11 @@ class MainActivity : AppCompatActivity() {
                 ?.supportedFrameRateRanges.orEmpty().map { it.lower to it.upper }
             Log.i(TAG, "AE fps ranges ${FrameRatePlan.describe(ranges)}; PAL 25p by frame-grid conversion")
 
-            preview = Preview.Builder()
-                .setTargetAspectRatio(streamAspect)
+            val previewBuilder = Preview.Builder().setTargetAspectRatio(streamAspect)
+            // DATA CODE: real exposure / sensitivity / aperture of the frames being recorded.
+            androidx.camera.camera2.interop.Camera2Interop.Extender(previewBuilder)
+                .setSessionCaptureCallback(captureDataCallback)
+            preview = previewBuilder
                 .build()
                 .also { it.setSurfaceProvider(binding.previewView.surfaceProvider) }
 
@@ -332,6 +362,11 @@ class MainActivity : AppCompatActivity() {
 
             try {
                 camera = provider.bindToLifecycle(this, selector, group)
+                cameraDataLog.isoMin = camera?.let {
+                    androidx.camera.camera2.interop.Camera2CameraInfo.from(it.cameraInfo)
+                        .getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
+                        ?.lower
+                } ?: 100
                 hc.reapplyBodySwitches()
                 updateFraming()
             } catch (e: Exception) {
@@ -463,6 +498,11 @@ class MainActivity : AppCompatActivity() {
             .start(ContextCompat.getMainExecutor(this)) { event ->
                 when (event) {
                     is VideoRecordEvent.Start -> {
+                        hc.navigator.settings.let {
+                            cameraDataLog.whiteBal = it.whiteBal
+                            cameraDataLog.exposure = it.exposure
+                        }
+                        cameraDataLog.start(android.os.SystemClock.uptimeMillis())
                         binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video_recording)
                         hc.onRecordingStarted()
                     }
@@ -470,14 +510,19 @@ class MainActivity : AppCompatActivity() {
                         hc.onRecordingProgress(event.recordingStats.recordedDurationNanos / 1_000_000)
                     }
                     is VideoRecordEvent.Finalize -> {
+                        val dataCode = cameraDataLog.stop()
+                        if (!event.hasError()) ioScope.launch {
+                            try { CameraDataStore.save(hc.dataCodeDir(), "$name.mp4", dataCode) }
+                            catch (t: Throwable) { Log.w(TAG, "data code save failed", t) }
+                        }
                         hc.onRecordingFinished(
                             event.recordingStats.recordedDurationNanos / 1_000_000,
                             saved = event.outputResults.outputUri != android.net.Uri.EMPTY,
                         )
-                        if (!event.hasError()) applyClipRotation(event.outputResults.outputUri, recordingDisplayCw)
+                        if (!event.hasError()) finishClip(event.outputResults.outputUri, recordingDisplayCw)
                         recordingRotation = null
                         updateFraming()
-                        binding.firmwareOsd.deviceRotationCw = photoRotationCw   // follow the phone again
+                        turnOsd(photoRotationCw)   // follow the phone again
                         binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video)
                         val msg = if (event.hasError())
                             "Save error: ${event.error}"
@@ -487,6 +532,60 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
+    }
+
+    /**
+     * After Finalize: camcorder sound (AUDIO EMU) and the display rotation. The original file is
+     * only replaced after processing succeeded; on failure it keeps its sound and gets the rotation.
+     */
+    private fun finishClip(uri: android.net.Uri, cwDegrees: Int) {
+        if (uri == android.net.Uri.EMPTY) return
+        val s = hc.navigator.settings
+        val profile = s.audioProfile()
+        val tape = s.tapeNoise == FirmwareSettings.ON
+        if (profile.bypass && !tape) {
+            applyClipRotation(uri, cwDegrees)
+            return
+        }
+        val keep = s.origAudio == FirmwareSettings.ORIG_AUDIO_KEEP
+        ioScope.launch {
+            val tmp = java.io.File(cacheDir, "hc_audio_${System.nanoTime()}.mp4")
+            try {
+                // UI sounds are not mixed in: the phone's microphone already records them.
+                val mixer = SfxMixer(if (tape) hc.tapeLoopPcm() else null, SfxMixer.LOOP_GAIN, emptyList(), 0f)
+                val ok = ClipAudioProcessor.process(this@MainActivity, uri, tmp, profile, cwDegrees, mixer)
+                Log.i(TAG, "clip audio $profile ok=$ok keep=$keep")
+                when {
+                    !ok -> applyClipRotation(uri, cwDegrees)
+                    keep -> {
+                        applyClipRotation(uri, cwDegrees)
+                        saveProcessedCopy(uri, tmp)
+                    }
+                    else -> contentResolver.openOutputStream(uri, "wt")?.use { o ->
+                        tmp.inputStream().use { it.copyTo(o) }
+                    }
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "clip finish failed", t)
+            } finally {
+                tmp.delete()
+            }
+        }
+    }
+
+    /** ORIG AUDIO KEEP: the processed clip is saved next to the original as <name>_dv.mp4. */
+    private fun saveProcessedCopy(original: android.net.Uri, file: java.io.File) {
+        val name = contentResolver.query(original, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)
+            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: "clip.mp4"
+        val cv = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, name.removeSuffix(".mp4") + "_dv.mp4")
+            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                put(MediaStore.Video.Media.RELATIVE_PATH, Hc90eController.MOVIES_DIR)
+            }
+        }
+        val dst = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, cv) ?: return
+        contentResolver.openOutputStream(dst)?.use { o -> file.inputStream().use { it.copyTo(o) } }
     }
 
     /** Writes the display rotation into the saved MP4 (in place, 36 bytes). */
@@ -533,12 +632,19 @@ class MainActivity : AppCompatActivity() {
      * positive range (soft-shouldered in the shader) and wins over EXPOSURE while on.
      */
     private fun applyCameraSettings() {
+        // CCD LOOK / SHARPNESS: both processors render the same tuned look.
+        val look = at.sturq.ccdcam.firmware.LookTweaks.profile(hc.navigator.settings)
+        for (p in listOf(previewProcessor, videoProcessor)) p.profile = look
         val cam = camera ?: return
         val s = hc.navigator.settings
+        val sns = s.superNs == FirmwareSettings.SUPER_NS_ON
+        previewProcessor.superNightShot = sns
+        videoProcessor.superNightShot = sns
         val es = cam.cameraInfo.exposureState
         if (es.isExposureCompensationSupported) {
             val range = es.exposureCompensationRange
             val index = when {
+                hc.nightShotOn && sns -> range.upper           // Super NightShot: all the gain
                 hc.nightShotOn -> range.upper / 2
                 s.exposure == FirmwareSettings.EXPOSURE_AUTO -> 0
                 else -> {

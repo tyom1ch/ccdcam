@@ -66,11 +66,21 @@ class SettingsStore(private val prefs: SharedPreferences) {
                 exposure = opt(KEY_FW_EXPOSURE, HC90eMenu.EXPOSURE, d.exposure),
                 whiteBal = opt(KEY_FW_WHITE_BAL, HC90eMenu.WHITE_BAL, d.whiteBal),
                 fader = opt(KEY_FW_FADER, HC90eMenu.FADER, d.fader),
+                superNs = opt(KEY_FW_SUPER_NS, HC90eMenu.SUPER_NS, d.superNs),
+                audioEmu = opt(KEY_FW_AUDIO_EMU, HC90eMenu.AUDIO_EMU, d.audioEmu),
+                origAudio = opt(KEY_FW_ORIG_AUDIO, HC90eMenu.ORIG_AUDIO, d.origAudio),
+                tapeNoise = opt(KEY_FW_TAPE_NOISE, HC90eMenu.TAPE_NOISE, d.tapeNoise),
+                tweaks = HC90eMenu.TWEAKS.mapNotNull { id ->
+                    val first = HC90eMenu.item(id).options.first().id
+                    opt(tweakKey(id), id, first).takeIf { it != first }?.let { id to it }
+                }.toMap(),
                 cassette = cassette,
             )
         }
         set(v) {
-            prefs.edit()
+            val e = prefs.edit()
+            for (id in HC90eMenu.TWEAKS) e.putString(tweakKey(id), v.tweak(id))
+            e
                 .putString(KEY_FW_REC_MODE, v.recMode.name)
                 .putString(KEY_FW_AUDIO_MODE, v.audioMode)
                 .putString(KEY_FW_DATA_CODE, v.dataCode)
@@ -81,6 +91,10 @@ class SettingsStore(private val prefs: SharedPreferences) {
                 .putString(KEY_FW_EXPOSURE, v.exposure)
                 .putString(KEY_FW_WHITE_BAL, v.whiteBal)
                 .putString(KEY_FW_FADER, v.fader)
+                .putString(KEY_FW_SUPER_NS, v.superNs)
+                .putString(KEY_FW_AUDIO_EMU, v.audioEmu)
+                .putString(KEY_FW_ORIG_AUDIO, v.origAudio)
+                .putString(KEY_FW_TAPE_NOISE, v.tapeNoise)
                 .putString(KEY_FW_TAPE_INSERTED, (v.cassette != null).toString())
                 .putString(KEY_FW_TAPE_USED_SP_MS, (v.cassette?.usedSpMs ?: 0L).toString())
                 .putString(KEY_FW_TAPE_COUNTER_MS, (v.cassette?.counterMs ?: 0L).toString())
@@ -100,6 +114,12 @@ class SettingsStore(private val prefs: SharedPreferences) {
         const val KEY_FW_EXPOSURE = "fw_exposure"
         const val KEY_FW_WHITE_BAL = "fw_white_bal"
         const val KEY_FW_FADER = "fw_fader"
+        const val KEY_FW_SUPER_NS = "fw_super_ns"
+        const val KEY_FW_AUDIO_EMU = "fw_audio_emu"
+        const val KEY_FW_ORIG_AUDIO = "fw_orig_audio"
+        /** fw_tweak_scanlines, fw_tweak_ccd_noise, ... */
+        fun tweakKey(itemId: String) = "fw_tweak_" + itemId.lowercase().replace(' ', '_')
+        const val KEY_FW_TAPE_NOISE = "fw_tape_noise"
         const val KEY_FW_TAPE_INSERTED = "fw_tape_inserted"
         const val KEY_FW_TAPE_USED_SP_MS = "fw_tape_used_sp_ms"
         const val KEY_FW_TAPE_COUNTER_MS = "fw_tape_counter_ms"

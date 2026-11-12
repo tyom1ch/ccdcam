@@ -147,8 +147,10 @@ void main() {
     // (tint sampled from a real NightShot frame, ITmedia 28048), lifted shadows, more noise.
     // Soft-shoulder curve 1 - e^(-2.5 L): shadows rise, highlights roll off instead of clipping.
     if (uNightShot > 0.5) {
-        float nl = 1.0 - exp(-2.5 * max(luma(col), 0.0));
-        float nn = (hash(uv * uResolution * 1.7 + uTime * 2.1) - 0.5) * 0.10;
+        // uNightShot 2 = Super NightShot: ~2x the sensitivity, noisier.
+        bool sns = uNightShot > 1.5;
+        float nl = 1.0 - exp(-(sns ? 5.0 : 2.5) * max(luma(col), 0.0));
+        float nn = (hash(uv * uResolution * 1.7 + uTime * 2.1) - 0.5) * (sns ? 0.16 : 0.10);
         col = vec3(0.70, 1.0, 0.96) * clamp(nl + nn, 0.0, 1.0);
     }
 

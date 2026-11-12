@@ -10,18 +10,31 @@ import kotlin.math.sin
  * start/stop recording, or operate the touch panel"; warnings sound a melody, guide p. 54/99);
  * the sounds themselves are an approximation — no redistributable recording exists.
  */
-enum class Beep(val notes: List<Pair<Double, Int>>) {
-    /** Touch-panel key: one short high blip. */
+enum class Beep(
+    val notes: List<Pair<Double, Int>>,
+    /** Part of the BEEP "melody" (silenced by BEEP OFF); mechanical sounds are not. */
+    val melody: Boolean = true,
+) {
+    /** Touch-panel key pressed (res/raw/ui_click). */
     TOUCH(listOf(2093.0 to 45)),
+    /** Touch-panel key released (res/raw/ui_declick). */
+    TOUCH_UP(listOf(1760.0 to 35)),
 
-    /** Recording start: rising two-note figure. */
+    /** Recording start (res/raw/alert; synthesized fallback). */
     REC_START(listOf(1568.0 to 70, 2093.0 to 120)),
 
-    /** Recording stop: falling two-note figure. */
+    /** Recording stop (res/raw/alert; synthesized fallback). */
     REC_STOP(listOf(2093.0 to 70, 1568.0 to 120)),
 
-    /** Warning indicator: three quick blips. */
+    /** Warning indicator (res/raw/alert). */
     WARNING(listOf(2349.0 to 60, 0.0 to 50, 2349.0 to 60, 0.0 to 50, 2349.0 to 60)),
+
+    /** Switching on (res/raw/power_on). */
+    POWER_ON(listOf(1568.0 to 60, 2093.0 to 60, 2637.0 to 110)),
+
+    /** Cassette compartment mechanics (res/raw/cassette_*): not a melody. */
+    CASSETTE_EJECT(listOf(220.0 to 90), melody = false),
+    CASSETTE_INSERT(listOf(180.0 to 60), melody = false),
 }
 
 object BeepSynth {
