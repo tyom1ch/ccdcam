@@ -95,6 +95,9 @@ class CcdSurfaceProcessor(
     /** NightShot look (body switch). Visual only. */
     @Volatile var nightShot: Boolean = false
 
+    /** Super NightShot (menu SUPER NS), effective only while [nightShot] is on. */
+    @Volatile var superNightShot: Boolean = false
+
     /** FADER amount 0..1 and colour (true = white). */
     @Volatile var fade: Float = 0f
     @Volatile var fadeWhite: Boolean = false
@@ -147,6 +150,7 @@ class CcdSurfaceProcessor(
         var lcdToBuffer: FloatArray? = null
         /** Offscreen pair for the interlace weave (created on first interlaced frame). */
         var weave: Interlacer.Target? = null
+        var frameCount = 0L
     }
 
     override fun onInputSurface(request: SurfaceRequest) {
@@ -267,6 +271,19 @@ class CcdSurfaceProcessor(
         val weave = if (look.shader.interlace > 0f) {
             entry.weave ?: interlacer.create(w, h).also { entry.weave = it }
         } else null
+        // Super NightShot slow shutter: new picture every SNS_HOLD frames, repeated between.
+        val sns = nightShot && superNightShot && weave != null
+        val n = entry.frameCount++
+        if (sns && weave!!.hasPrev && Interlacer.isHeldFrame(n)) {
+            updateGeometry(entry, fr)
+            entry.bufferToEffect?.let {
+                interlacer.present(weave, it, look.shader.lines, vertexBuf, texBuf, Interlacer.SNS_BLEND)
+            }
+            val q = osdQuads
+            val l = entry.lcdToBuffer
+            if (osd != null && q != null && l != null) osd.draw(q, l, osdLcdWidth)
+            return
+        }
         if (weave != null) interlacer.begin(weave)
 
         GLES20.glViewport(0, 0, w, h)
@@ -280,7 +297,7 @@ class CcdSurfaceProcessor(
         GLES20.glUniformMatrix4fv(uTexMatrixLoc, 1, false, combined, 0)
         GLES20.glUniform2f(uResLoc, w.toFloat(), h.toFloat())
         GLES20.glUniform1f(uTimeLoc, (System.nanoTime() - startNs) / 1e9f)
-        GLES20.glUniform1f(uNightShotLoc, if (nightShot) 1f else 0f)
+        GLES20.glUniform1f(uNightShotLoc, if (!nightShot) 0f else if (superNightShot) 2f else 1f)
         GLES20.glUniform1f(uFadeLoc, fade)
         GLES20.glUniform1f(uFadeWhiteLoc, if (fadeWhite) 1f else 0f)
         lookUniforms.apply(look)
@@ -299,7 +316,9 @@ class CcdSurfaceProcessor(
         GLES20.glDisableVertexAttribArray(aTexLoc)
 
         val b2e = entry.bufferToEffect
-        if (weave != null && b2e != null) interlacer.finish(weave, b2e, look.shader.lines, vertexBuf, texBuf)
+        if (weave != null && b2e != null) {
+            interlacer.finish(weave, b2e, look.shader.lines, vertexBuf, texBuf, if (sns) Interlacer.SNS_BLEND else 0f)
+        }
 
         // OSD goes on top of the woven frame (no combing on the indicators).
         val quads = osdQuads

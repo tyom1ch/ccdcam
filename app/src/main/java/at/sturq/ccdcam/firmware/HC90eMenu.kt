@@ -42,6 +42,7 @@ object HC90eMenu {
     const val FADER = "FADER"
     const val SPOT_FOCUS = "SPOT FOCUS"
     const val SPOT_METER = "SPOT METER"
+    const val SUPER_NS = "SUPER NS"
 
     /** Items that open their own screen instead of an option list. */
     val ACTION_ITEMS = setOf(END_SEARCH, SPOT_FOCUS, SPOT_METER)
@@ -62,6 +63,10 @@ object HC90eMenu {
             lamps = CAMERA_LAMPS, emulated = true,
         )
         SPOT_FOCUS, SPOT_METER -> MenuItem(id, lamps = CAMERA_LAMPS, emulated = true)
+        SUPER_NS -> MenuItem(
+            id, options = opts(FirmwareSettings.SUPER_NS_OFF, FirmwareSettings.SUPER_NS_ON),
+            lamps = CAMERA_LAMPS, emulated = true,
+        )
         else -> MenuItem(id)
     }
 

@@ -186,4 +186,11 @@ class OsdSceneLayoutTest {
         val v = OsdVertices.build(listOf(q), 64, 64, w)
         assertEquals(1f, v[OsdVertices.FLOATS_PER_VERTEX], 1e-6f)    // right edge = 1
     }
+
+    @Test
+    fun superNightShotCaption() {
+        val items = OsdScene.build(state().copy(nightShot = true, superNightShot = true, blinkOn = true), true)
+        assertTrue(items.any { it is OsdItem.Text && it.text == "SUPER NIGHTSHOT" })
+        assertFalse(items.any { it is OsdItem.Text && it.text == "NIGHTSHOT" })
+    }
 }

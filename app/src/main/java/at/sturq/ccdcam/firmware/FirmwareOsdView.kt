@@ -302,6 +302,7 @@ class FirmwareOsdView @JvmOverloads constructor(
             dateTimeMs = dateTime,
             message = if (!forVideo && now < messageUntil) message else null,
             nightShot = nightShot,
+            superNightShot = nightShot && s.superNs == FirmwareSettings.SUPER_NS_ON,
             faderArmed = !forVideo && nav.lamp == Lamp.TAPE && !recording &&
                 s.fader != FirmwareSettings.FADER_OFF,
             blinkOn = (now / 500) % 2 == 0L,

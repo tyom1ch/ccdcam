@@ -535,10 +535,14 @@ class MainActivity : AppCompatActivity() {
     private fun applyCameraSettings() {
         val cam = camera ?: return
         val s = hc.navigator.settings
+        val sns = s.superNs == FirmwareSettings.SUPER_NS_ON
+        previewProcessor.superNightShot = sns
+        videoProcessor.superNightShot = sns
         val es = cam.cameraInfo.exposureState
         if (es.isExposureCompensationSupported) {
             val range = es.exposureCompensationRange
             val index = when {
+                hc.nightShotOn && sns -> range.upper           // Super NightShot: all the gain
                 hc.nightShotOn -> range.upper / 2
                 s.exposure == FirmwareSettings.EXPOSURE_AUTO -> 0
                 else -> {

@@ -32,6 +32,8 @@ data class OsdIndicators(
     val blinkOn: Boolean = true,
     /** FADER selected and waiting for START (LCD indicator, blinks). */
     val faderArmed: Boolean = false,
+    /** Super NightShot active (NightShot on + SUPER NS). */
+    val superNightShot: Boolean = false,
 ) {
     enum class Transport { STOP, PLAY, PAUSE, REW, FF }
 }
@@ -142,7 +144,8 @@ object OsdScene {
         if (s.nightShot) {
             out += OsdItem.Sprite("nightshot", LEFT, ROW2, OsdItem.Align.LEFT, WHITE)
             if (s.blinkOn) {
-                out += OsdItem.Text("NIGHTSHOT", lcdW / 2f, NIGHTSHOT_ROW, OsdItem.Align.CENTER, WHITE, NIGHTSHOT_SCALE)
+                val caption = if (s.superNightShot) "SUPER NIGHTSHOT" else "NIGHTSHOT"
+                out += OsdItem.Text(caption, lcdW / 2f, NIGHTSHOT_ROW, OsdItem.Align.CENTER, WHITE, NIGHTSHOT_SCALE)
             }
         }
 

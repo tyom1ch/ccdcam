@@ -19,6 +19,8 @@ data class FirmwareSettings(
     val whiteBal: String = WB_AUTO,
     /** PICT.APPLI. > FADER: armed fader, cleared after a fade-out. */
     val fader: String = FADER_OFF,
+    /** CAMERA SET > SUPER NS (works with the NIGHTSHOT switch on). */
+    val superNs: String = SUPER_NS_OFF,
     val cassette: VirtualCassette? = VirtualCassette.fresh(),
 ) {
     val beepOn: Boolean get() = beep == BEEP_ON
@@ -36,6 +38,7 @@ data class FirmwareSettings(
         HC90eMenu.EXPOSURE -> exposure
         HC90eMenu.WHITE_BAL -> whiteBal
         HC90eMenu.FADER -> fader
+        HC90eMenu.SUPER_NS -> superNs
         else -> null
     }
 
@@ -54,6 +57,7 @@ data class FirmwareSettings(
             HC90eMenu.EXPOSURE -> copy(exposure = optionId)
             HC90eMenu.WHITE_BAL -> copy(whiteBal = optionId)
             HC90eMenu.FADER -> copy(fader = optionId)
+            HC90eMenu.SUPER_NS -> copy(superNs = optionId)
             else -> throw IllegalArgumentException("$itemId has no stored value")
         }
     }
@@ -78,6 +82,8 @@ data class FirmwareSettings(
         const val WB_INDOOR = "INDOOR"
         const val WB_OUTDOOR = "OUTDOOR"
         const val FADER_OFF = "OFF"
+        const val SUPER_NS_OFF = "OFF"
+        const val SUPER_NS_ON = "ON"
         const val FADER_BLACK = "BLACK FADER"
         const val FADER_WHITE = "WHITE FADER"
     }

@@ -97,6 +97,7 @@ class HC90eMenuTest {
         // stage 10: first P-MENU page comes alive
         for (e in listOf("EXPOSURE", "SPOT FOCUS", "FADER")) assertTrue(e, HC90eMenu.pMenuEntryAvailable(e, Lamp.TAPE))
         assertFalse(HC90eMenu.pMenuEntryAvailable("FADER", Lamp.MEMORY))
+        assertTrue(HC90eMenu.pMenuEntryAvailable("SUPER NS", Lamp.TAPE))
         assertTrue(HC90eMenu.pMenuEntryAvailable(HC90eMenu.REC_MODE, Lamp.TAPE))
         assertFalse(HC90eMenu.pMenuEntryAvailable(HC90eMenu.DATA_CODE, Lamp.TAPE))  // playback only
         assertTrue(HC90eMenu.pMenuEntryAvailable(HC90eMenu.DATA_CODE, Lamp.PLAY_EDIT))

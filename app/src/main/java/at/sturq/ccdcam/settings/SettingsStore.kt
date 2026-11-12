@@ -66,6 +66,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
                 exposure = opt(KEY_FW_EXPOSURE, HC90eMenu.EXPOSURE, d.exposure),
                 whiteBal = opt(KEY_FW_WHITE_BAL, HC90eMenu.WHITE_BAL, d.whiteBal),
                 fader = opt(KEY_FW_FADER, HC90eMenu.FADER, d.fader),
+                superNs = opt(KEY_FW_SUPER_NS, HC90eMenu.SUPER_NS, d.superNs),
                 cassette = cassette,
             )
         }
@@ -81,6 +82,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
                 .putString(KEY_FW_EXPOSURE, v.exposure)
                 .putString(KEY_FW_WHITE_BAL, v.whiteBal)
                 .putString(KEY_FW_FADER, v.fader)
+                .putString(KEY_FW_SUPER_NS, v.superNs)
                 .putString(KEY_FW_TAPE_INSERTED, (v.cassette != null).toString())
                 .putString(KEY_FW_TAPE_USED_SP_MS, (v.cassette?.usedSpMs ?: 0L).toString())
                 .putString(KEY_FW_TAPE_COUNTER_MS, (v.cassette?.counterMs ?: 0L).toString())
@@ -100,6 +102,7 @@ class SettingsStore(private val prefs: SharedPreferences) {
         const val KEY_FW_EXPOSURE = "fw_exposure"
         const val KEY_FW_WHITE_BAL = "fw_white_bal"
         const val KEY_FW_FADER = "fw_fader"
+        const val KEY_FW_SUPER_NS = "fw_super_ns"
         const val KEY_FW_TAPE_INSERTED = "fw_tape_inserted"
         const val KEY_FW_TAPE_USED_SP_MS = "fw_tape_used_sp_ms"
         const val KEY_FW_TAPE_COUNTER_MS = "fw_tape_counter_ms"
