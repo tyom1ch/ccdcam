@@ -127,10 +127,10 @@ void main() {
     col = mix(vec3(l), col, uSaturation);
 
     // NightShot: monochrome with the cold green-teal cast of the HC90's IR picture
-    // (tint sampled from a real NightShot frame, ITmedia 28048), lifted gain, more noise.
+    // (tint sampled from a real NightShot frame, ITmedia 28048), lifted shadows, more noise.
+    // Soft-shoulder curve 1 - e^(-2.5 L): shadows rise, highlights roll off instead of clipping.
     if (uNightShot > 0.5) {
-        float nl = clamp(luma(col) * 2.2, 0.0, 1.0);
-        nl = pow(nl, 0.85);
+        float nl = 1.0 - exp(-2.5 * max(luma(col), 0.0));
         float nn = (hash(uv * uResolution * 1.7 + uTime * 2.1) - 0.5) * 0.10;
         col = vec3(0.70, 1.0, 0.96) * clamp(nl + nn, 0.0, 1.0);
     }

@@ -64,6 +64,8 @@ object OsdScene {
     private const val ROW1 = 18f
     private const val ROW2 = ROW1 + CELL_H
     private const val DATE_ROW = 412f
+    /** Centred NIGHTSHOT caption: cell top so the caps sit on the LCD centre line. */
+    private const val NIGHTSHOT_ROW = LCD_H / 2f - 6.5f * PY
     private const val LEFT = 20f
     private const val RIGHT = 1009f
 
@@ -120,7 +122,10 @@ object OsdScene {
         }
 
         // NightShot indicator (position: left, under the battery — ITmedia 28035)
-        if (s.nightShot) out += OsdItem.Sprite("nightshot", LEFT, ROW2, OsdItem.Align.LEFT, WHITE)
+        if (s.nightShot) {
+            out += OsdItem.Sprite("nightshot", LEFT, ROW2, OsdItem.Align.LEFT, WHITE)
+            out += OsdItem.Text("NIGHTSHOT", LCD_W / 2f, NIGHTSHOT_ROW, OsdItem.Align.CENTER, WHITE)
+        }
 
         // Date / time row
         s.dateTimeMs?.let { t ->
@@ -130,7 +135,9 @@ object OsdScene {
         }
 
         if (!forVideo) {
-            s.message?.let { out += OsdItem.Text(it, LCD_W / 2f, LCD_H * 0.47f, OsdItem.Align.CENTER, WHITE) }
+            // Messages go under the centred NIGHTSHOT caption when it is shown.
+            val msgY = if (s.nightShot) NIGHTSHOT_ROW + CELL_H * 1.2f else LCD_H * 0.47f
+            s.message?.let { out += OsdItem.Text(it, LCD_W / 2f, msgY, OsdItem.Align.CENTER, WHITE) }
         }
         return out
     }

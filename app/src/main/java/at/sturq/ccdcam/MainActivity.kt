@@ -177,11 +177,12 @@ class MainActivity : AppCompatActivity() {
             override fun setNightShot(on: Boolean) {
                 previewProcessor.nightShot = on
                 videoProcessor.nightShot = on
-                // Brighter exposure helps the dim NightShot picture; reset when off.
+                // Half of the positive exposure range: brighter, without blowing highlights
+                // (the shader's soft shoulder does the rest). Reset when off.
                 camera?.let { cam ->
                     val range = cam.cameraInfo.exposureState.exposureCompensationRange
                     if (cam.cameraInfo.exposureState.isExposureCompensationSupported) {
-                        cam.cameraControl.setExposureCompensationIndex(if (on) range.upper else 0)
+                        cam.cameraControl.setExposureCompensationIndex(if (on) range.upper / 2 else 0)
                     }
                 }
             }

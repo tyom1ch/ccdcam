@@ -127,4 +127,18 @@ class OsdSceneLayoutTest {
         assertFalse(has(false, false))
         assertTrue("nightshot" in font.sprites)
     }
+
+    @Test
+    fun nightShotCaptionIsCentredAndPushesMessagesDown() {
+        val items = OsdScene.build(state(message = "Insert a cassette").copy(nightShot = true), false)
+        val cap = items.filterIsInstance<OsdItem.Text>().first { it.text == "NIGHTSHOT" }
+        assertEquals(OsdItem.Align.CENTER, cap.align)
+        assertEquals(OsdScene.LCD_W / 2f, cap.x, 0.01f)
+        val msg = items.filterIsInstance<OsdItem.Text>().first { it.text == "Insert a cassette" }
+        assertTrue(msg.y > cap.y + OsdScene.CELL_H)
+        // burned into the recording too
+        assertTrue(OsdScene.build(state().copy(nightShot = true), true)
+            .any { it is OsdItem.Text && it.text == "NIGHTSHOT" })
+        assertFalse(OsdScene.build(state(), true).any { it is OsdItem.Text && it.text == "NIGHTSHOT" })
+    }
 }
