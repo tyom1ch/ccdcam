@@ -25,8 +25,7 @@ class ShaderUniformsTest {
 
     /** Uniforms set directly by CcdSurfaceProcessor, not through LookUniforms. */
     private val processorUniforms = setOf(
-        "sTexture", "uResolution", "uTime", "uTexMatrix", "uStretch", "uRotationRad",
-        "uBufferToEffect", "uEffectToBuffer",
+        "sTexture", "uResolution", "uTime", "uTexMatrix", "uBufferToEffect", "uEffectToBuffer",
     )
 
     @Test
@@ -69,9 +68,8 @@ class ShaderUniformsTest {
     }
 
     @Test
-    fun textureSpacePathIsUntouched() {
-        // CCDCam (uEffectSpace = 0) must keep sampling the camera texture directly.
-        assertTrue(frag.contains("if (uEffectSpace < 0.5) return p;"))
-        assertTrue(frag.contains("if (uHBlur <= 0.0) return sampleAt(p);"))
+    fun everyVertUniformIsSetByTheProcessor() {
+        val unset = uniformsOf(vert).keys - processorUniforms
+        assertTrue("vertex uniforms nobody sets: $unset", unset.isEmpty())
     }
 }

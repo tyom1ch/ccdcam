@@ -1,23 +1,18 @@
 #extension GL_OES_EGL_image_external : require
 precision highp float;
 
-varying vec2 vTexCoord;   // camera texture space (after uTexMatrix + uStretch)
-varying vec2 vEffectUv;   // upright picture space, 0..1 inside the picture (uEffectSpace = 1)
+varying vec2 vEffectUv;   // upright picture space, 0..1 inside the picture
 uniform samplerExternalOES sTexture;
 uniform vec2 uResolution;
 uniform float uTime;
-uniform mat4 uTexMatrix;
-uniform float uStretch;
+uniform mat4 uTexMatrix;       // buffer uv -> camera texture (SurfaceOutput.updateTransformMatrix)
 uniform mat3 uEffectToBuffer;  // picture uv -> output buffer uv (geometry/EffectGeometry.kt)
 
-// Where the look is computed:
-//   0 = camera texture space (original CCDCam behaviour, CCDCAM_DEFAULT)
-//   1 = upright picture space: lines/grid follow the image as viewed, picture is
-//       pillar/letterboxed to its aspect (HC90E_PAL)
-uniform float uEffectSpace;
+// The look is computed in upright picture space: lines/grid follow the image as viewed and the
+// picture is pillar/letterboxed to its aspect inside the emulated 16:9 LCD.
 
-// Look parameters, fed every frame from CameraProfile.shader (profile/Profiles.kt).
-// CCDCAM_DEFAULT reproduces the former constants exactly; tools/sim.py mirrors them.
+// Look parameters, fed every frame from CameraProfile.shader (profile/Profiles.kt);
+// tools/sim.py mirrors them.
 uniform float uCcdX;
 uniform float uCcdY;
 uniform float uLines;
@@ -55,14 +50,10 @@ vec2 ccdGrid(vec2 uv) {
     return (floor(uv * cell) + 0.5) / cell;
 }
 
-// Effect-space coordinate -> camera texture coordinate. Identity in texture space; in picture
-// space: picture uv -> buffer uv (uEffectToBuffer), then passthrough.vert's buffer -> texture
-// mapping (aTexCoord == buffer uv for our full-screen quad).
+// Picture uv -> buffer uv (uEffectToBuffer) -> camera texture coordinate (uTexMatrix).
 vec2 toTex(vec2 p) {
-    if (uEffectSpace < 0.5) return p;
     vec2 buf = (uEffectToBuffer * vec3(p, 1.0)).xy;
-    vec2 base = (uTexMatrix * vec4(buf, 0.0, 1.0)).xy;
-    return vec2(0.5 + (base.x - 0.5) * uStretch, base.y);
+    return (uTexMatrix * vec4(buf, 0.0, 1.0)).xy;
 }
 
 vec4 sampleAt(vec2 p) { return texture2D(sTexture, toTex(p)); }
@@ -82,9 +73,8 @@ float brightMask(vec2 uv, float threshold) {
 }
 
 void main() {
-    vec2 baseUv = (uEffectSpace < 0.5) ? vTexCoord : vEffectUv;
-    if (uEffectSpace >= 0.5 &&
-        (baseUv.x < 0.0 || baseUv.x > 1.0 || baseUv.y < 0.0 || baseUv.y > 1.0)) {
+    vec2 baseUv = vEffectUv;
+    if (baseUv.x < 0.0 || baseUv.x > 1.0 || baseUv.y < 0.0 || baseUv.y > 1.0) {
         gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);   // pillar/letterbox outside the picture
         return;
     }

@@ -30,32 +30,13 @@ data class ShaderParams(
     val hBlur: Float,
 )
 
-/** Coordinate space the look is computed in (`uEffectSpace` in ccd.frag). */
-enum class EffectSpace(val uniformValue: Float) {
-    /** Camera texture space (after the transform matrix). The original CCDCam behaviour. */
-    TEXTURE(0f),
-
-    /**
-     * Upright picture space (geometry/EffectGeometry.kt): grid, scanlines, smear and flare
-     * follow the image as the viewer sees it (preview, MP4 with its rotation metadata), and
-     * the picture keeps its aspect via pillar/letterbox inside the shared preview/video region.
-     */
-    PICTURE(1f),
-}
-
 /**
- * A camera profile: everything that makes one emulated camera differ from another.
- *
- * @param hudLabel text of the bottom-left HUD label
- * @param stretch horizontal sample range fed to `uStretch` in passthrough.vert
- * @param timecodeFps frame field of the HUD timecode runs 0 until timecodeFps - 1
+ * A camera profile: the look parameters of the emulated camera. The app emulates one camera,
+ * the DCR-HC90E ([Profiles.HC90E_PAL]); the type stays so look variants (e.g. NightShot) can be
+ * expressed as profiles later.
  */
 data class CameraProfile(
     val id: String,
     val displayName: String,
-    val hudLabel: String,
     val shader: ShaderParams,
-    val effectSpace: EffectSpace,
-    val stretch: Float,
-    val timecodeFps: Int,
 )

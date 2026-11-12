@@ -12,6 +12,13 @@
 
 ---
 
+> **This fork is a Sony DCR-HC90E (PAL) camcorder emulator.** The original CCDCam profile and HUD
+> were removed; the app now emulates one camera: the HC90E picture (720×576 sampling grid, 576
+> scanlines, CCD look) and its touch-panel firmware (P-MENU, MENU drum, virtual Mini DV
+> cassette, PLAY/EDIT). References and what is documented vs approximated:
+> `docs/hc90e-reference.md`, `docs/hc90e-ui-references.md`. Recorded files are CameraX MP4
+> (H.264 + AAC, 16:9), not DV.
+
 CCDCam runs the live camera feed through a GLSL fragment shader that fakes the look of a
 90s Sony Handycam / Hi8 / MiniDV: chunky low-res chroma, vertical highlight smear,
 horizontal flare, scanlines, a warm grade, and a vignette. Photos and video are saved with

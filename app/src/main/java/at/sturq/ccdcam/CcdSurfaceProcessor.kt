@@ -19,7 +19,6 @@ import androidx.camera.core.SurfaceProcessor
 import androidx.camera.core.SurfaceRequest
 import at.sturq.ccdcam.geometry.EffectGeometry
 import at.sturq.ccdcam.profile.CameraProfile
-import at.sturq.ccdcam.profile.EffectSpace
 import at.sturq.ccdcam.profile.Profiles
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -45,13 +44,11 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
     private val handler = Handler(thread.looper)
     val executor: Executor = Executor { r -> handler.post(r) }
 
-    @Volatile var stretch: Float = 0.72f
-
     /** Look parameters; read once per camera frame so every output gets the same values. */
-    @Volatile var profile: CameraProfile = Profiles.CCDCAM_DEFAULT
+    @Volatile var profile: CameraProfile = Profiles.HC90E_PAL
 
     /**
-     * Inputs for [EffectSpace.PICTURE] geometry. Ignored in texture space (CCDCam).
+     * Inputs for the upright picture geometry (geometry/EffectGeometry.kt).
      *
      * @param regionAspect width/height, buffer (sensor) orientation, of the centred region the
      *   downstream preview and video crops share
@@ -84,12 +81,9 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
     private var uResLoc = -1
     private var uTimeLoc = -1
     private var uTextureLoc = -1
-    private var uStretchLoc = -1
-    private var uRotationLoc = -1
     private lateinit var lookUniforms: LookUniforms
     private var uBufferToEffectLoc = -1
     private var uEffectToBufferLoc = -1
-    private val identityMat3 = floatArrayOf(1f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 1f)
     private lateinit var vertexBuf: FloatBuffer
     private lateinit var texBuf: FloatBuffer
     private val texMatrix = FloatArray(16)
@@ -213,17 +207,10 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
         GLES20.glUniformMatrix4fv(uTexMatrixLoc, 1, false, combined, 0)
         GLES20.glUniform2f(uResLoc, w.toFloat(), h.toFloat())
         GLES20.glUniform1f(uTimeLoc, (System.nanoTime() - startNs) / 1e9f)
-        GLES20.glUniform1f(uStretchLoc, stretch)
-        GLES20.glUniform1f(uRotationLoc, 0f)
         lookUniforms.apply(look)
-        if (look.effectSpace == EffectSpace.PICTURE) {
-            updateGeometry(entry, fr)
-            GLES20.glUniformMatrix3fv(uBufferToEffectLoc, 1, false, entry.bufferToEffect, 0)
-            GLES20.glUniformMatrix3fv(uEffectToBufferLoc, 1, false, entry.effectToBuffer, 0)
-        } else {
-            GLES20.glUniformMatrix3fv(uBufferToEffectLoc, 1, false, identityMat3, 0)
-            GLES20.glUniformMatrix3fv(uEffectToBufferLoc, 1, false, identityMat3, 0)
-        }
+        updateGeometry(entry, fr)
+        GLES20.glUniformMatrix3fv(uBufferToEffectLoc, 1, false, entry.bufferToEffect, 0)
+        GLES20.glUniformMatrix3fv(uEffectToBufferLoc, 1, false, entry.effectToBuffer, 0)
 
         vertexBuf.position(0)
         GLES20.glEnableVertexAttribArray(aPosLoc)
@@ -298,8 +285,6 @@ class CcdSurfaceProcessor(context: Context) : SurfaceProcessor {
         uResLoc = GLES20.glGetUniformLocation(program, "uResolution")
         uTimeLoc = GLES20.glGetUniformLocation(program, "uTime")
         uTextureLoc = GLES20.glGetUniformLocation(program, "sTexture")
-        uStretchLoc = GLES20.glGetUniformLocation(program, "uStretch")
-        uRotationLoc = GLES20.glGetUniformLocation(program, "uRotationRad")
         lookUniforms = LookUniforms(program)
         uBufferToEffectLoc = GLES20.glGetUniformLocation(program, "uBufferToEffect")
         uEffectToBufferLoc = GLES20.glGetUniformLocation(program, "uEffectToBuffer")

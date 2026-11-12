@@ -69,6 +69,13 @@ class FirmwareOsdView @JvmOverloads constructor(
     var playbackClipTimeMs: Long? = null
         set(value) { field = value; invalidate() }
 
+    /**
+     * How far the phone is turned clockwise from portrait (0/90/180/270). The activity stays
+     * portrait; the display is drawn turned so it stays upright for the user.
+     */
+    var deviceRotationCw = 0
+        set(value) { if (field != value) { field = value; pressed = null; invalidate() } }
+
     /** Aspect of the shared camera region as displayed in this view (portrait UI: 9:16). */
     var regionAspectInView = 9f / 16f
         set(value) { field = value; invalidate() }
@@ -153,14 +160,23 @@ class FirmwareOsdView @JvmOverloads constructor(
     private var pressed: Target? = null
 
     private lateinit var lcd: Box
+    private var frame: LcdLayout.RotatedFrame? = null
     private fun b(f: FloatArray) = LcdLayout.at(lcd, f[0], f[1], f[2], f[3])
 
     override fun onDraw(canvas: Canvas) {
         val nav = navigator ?: return
         if (width == 0 || height == 0) return
-        lcd = LcdLayout.lcd(LcdLayout.displayedRegion(width.toFloat(), height.toFloat(), regionAspectInView))
+        val region = LcdLayout.displayedRegion(width.toFloat(), height.toFloat(), regionAspectInView)
+        val fr = LcdLayout.RotatedFrame(region, deviceRotationCw)
+        frame = fr
+        // Everything below is drawn in the upright virtual frame (fr.width × fr.height).
+        lcd = LcdLayout.lcd(Box(0f, 0f, fr.width, fr.height))
         targets.clear()
         val now = SystemClock.uptimeMillis()
+        canvas.save()
+        canvas.translate(region.centerX, region.centerY)
+        canvas.rotate(fr.canvasAngle)
+        canvas.translate(-fr.width / 2f, -fr.height / 2f)
 
         drawIndicatorRow(canvas, nav, now)
         when (val s = nav.screen) {
@@ -171,6 +187,7 @@ class FirmwareOsdView @JvmOverloads constructor(
             is Screen.Setting -> drawSetting(canvas, nav, s)
         }
         message?.let { if (now < messageUntil) drawMessage(canvas, it) else message = null }
+        canvas.restore()
 
         // Keep timed elements (date, REMAINING AUTO, messages, warning blink) fresh.
         val next = listOf(dateTimeUntil, remainingUntil, messageUntil).filter { it > now }.minOrNull()
@@ -774,8 +791,7 @@ class FirmwareOsdView @JvmOverloads constructor(
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         val nav = navigator ?: return false
-        val x = event.x
-        val y = event.y
+        val (x, y) = frame?.toVirtual(event.x, event.y) ?: return false
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 val hit = targets.lastOrNull { it.box.contains(x, y) }

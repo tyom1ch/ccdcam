@@ -18,10 +18,10 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-# ---------- look parameters (kept in sync with Profiles.CCDCAM_DEFAULT / ccd.frag) ----------
+# ---------- look parameters (kept in sync with Profiles.HC90E_PAL / ccd.frag) ----------
 CCD_X = 720.0
-CCD_Y = 720.0
-LINES = 480.0
+CCD_Y = 576.0
+LINES = 576.0
 SMEAR_THRESHOLD = 0.86
 SMEAR_STRENGTH = 0.0
 SMEAR_SAMPLES = 8

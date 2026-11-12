@@ -4,7 +4,6 @@ import android.content.SharedPreferences
 import at.sturq.ccdcam.firmware.FirmwareSettings
 import at.sturq.ccdcam.firmware.RecMode
 import at.sturq.ccdcam.firmware.VirtualCassette
-import at.sturq.ccdcam.profile.Profiles
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -15,7 +14,6 @@ class SettingsStoreTest {
     fun freshInstallDefaultsToOriginalBehaviour() {
         val store = SettingsStore(FakePrefs())
         assertEquals(AspectSetting.RATIO_16_9, store.aspect)
-        assertEquals(Profiles.CCDCAM_DEFAULT, store.profile)
     }
 
     @Test
@@ -34,18 +32,6 @@ class SettingsStoreTest {
         assertEquals("4:3", prefs.data["aspect"])
         store.aspect = AspectSetting.RATIO_16_9
         assertEquals("16:9", prefs.data["aspect"])
-    }
-
-    @Test
-    fun profileRoundTripAndUnknownFallback() {
-        val prefs = FakePrefs()
-        val store = SettingsStore(prefs)
-        store.profile = Profiles.HC90E_PAL
-        assertEquals("hc90e_pal", prefs.data["profile"])
-        assertEquals(Profiles.HC90E_PAL, store.profile)
-
-        prefs.data["profile"] = "removed-profile"
-        assertEquals(Profiles.CCDCAM_DEFAULT, store.profile)
     }
 
     @Test
