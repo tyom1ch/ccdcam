@@ -129,6 +129,7 @@ class MainActivity : AppCompatActivity() {
         osd.animate().cancel()
         osd.animate().alpha(0f).setDuration(110).withEndAction {
             osd.deviceRotationCw = cw
+            binding.playbackView.deviceRotationCw = cw   // PLAY/EDIT picture turns with the OSD
             osd.animate().alpha(1f).setDuration(170).start()
         }.start()
     }
@@ -326,6 +327,7 @@ class MainActivity : AppCompatActivity() {
             // pillar bars. The LCD stays 16:9 (the preview shows 4:3 with bars, like the HC90).
             val streamAspect = if (wide) AspectRatio.RATIO_16_9 else AspectRatio.RATIO_4_3
             binding.firmwareOsd.regionAspectInView = if (wide) 9f / 16f else 3f / 4f
+            binding.playbackView.regionAspect = binding.firmwareOsd.regionAspectInView
 
             val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
 

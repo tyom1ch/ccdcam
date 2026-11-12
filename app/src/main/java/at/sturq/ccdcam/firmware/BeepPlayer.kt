@@ -9,6 +9,8 @@ import at.sturq.ccdcam.R
 import at.sturq.ccdcam.audio.WavPcm
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
 /**
@@ -19,7 +21,7 @@ import kotlin.math.roundToInt
 class BeepPlayer(context: Context) {
 
     private val res = context.applicationContext.resources
-    private val executor = Executors.newSingleThreadExecutor { r -> Thread(r, "HC90eBeep") }
+    private val executor = Executors.newSingleThreadScheduledExecutor { r -> Thread(r, "HC90eBeep") }
     private val cache = ConcurrentHashMap<Beep, FloatArray>()
     @Volatile private var loop: FloatArray? = null
 
@@ -82,24 +84,43 @@ class BeepPlayer(context: Context) {
             .also { it.write(pcm, 0, pcm.size) }
     }
 
+    /** When the sound of each voice started, and a sound waiting for its turn. */
+    private val startedAt = HashMap<Boolean, Long>()
+    private val waiting = HashMap<Boolean, ScheduledFuture<*>>()
+
     /**
-     * Plays [beep] at once. A new sound cuts the one still sounding in the same voice (like the
-     * camcorder's single beeper): fast taps give fast, short clicks, never a queue of late ones.
+     * Plays [beep]. A new sound cuts the one still sounding in the same voice (like the
+     * camcorder's single beeper), but only after that one has sounded for [MIN_SOUND_MS]: a
+     * press click is never swallowed by an instant release click, and fast taps never queue
+     * up into late clicks (only the newest waiting sound is kept).
      */
     fun play(beep: Beep) {
         executor.execute {
-            try {
-                val voice = beep.melody
-                playing.remove(voice)?.let { cut(it) }
-                val t = track(beep)
-                cut(t)                                  // the same sound may still be sounding
-                t.reloadStaticData()
-                t.setVolume(volume)
-                t.play()
-                playing[voice] = t
-            } catch (t: Throwable) {
-                Log.w("BeepPlayer", "beep failed", t)
+            val voice = beep.melody
+            waiting.remove(voice)?.cancel(false)
+            val since = android.os.SystemClock.uptimeMillis() - (startedAt[voice] ?: 0L)
+            val delay = MIN_SOUND_MS - since
+            if (playing[voice] != null && delay > 0) {
+                waiting[voice] = executor.schedule({ waiting.remove(voice); start(beep) }, delay, TimeUnit.MILLISECONDS)
+            } else {
+                start(beep)
             }
+        }
+    }
+
+    private fun start(beep: Beep) {
+        try {
+            val voice = beep.melody
+            playing.remove(voice)?.let { cut(it) }
+            val t = track(beep)
+            cut(t)                                      // the same sound may still be sounding
+            t.reloadStaticData()
+            t.setVolume(volume)
+            t.play()
+            playing[voice] = t
+            startedAt[voice] = android.os.SystemClock.uptimeMillis()
+        } catch (t: Throwable) {
+            Log.w("BeepPlayer", "beep failed", t)
         }
     }
 
@@ -122,5 +143,7 @@ class BeepPlayer(context: Context) {
 
     companion object {
         const val RATE = 48_000
+        /** Shortest time a sound plays before the next one may cut it. */
+        const val MIN_SOUND_MS = 40L
     }
 }
