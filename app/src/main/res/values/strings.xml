@@ -7,4 +7,5 @@
     <string name="shutter">shutter</string>
     <string name="gallery">gallery</string>
     <string name="perm_denied">Camera + Mic permission needed</string>
+    <string name="perm_storage_denied">Storage permission needed to save photos and videos on Android 9 and older</string>
 </resources>

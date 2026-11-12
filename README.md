@@ -40,7 +40,7 @@ Forest, shot on a Pixel through CCDCam:
 
 - **Live filtered preview** at full display refresh rate (60 to 120 fps)
 - **Photo mode**: single JPEG snapshot of the filtered frame, saved to `Pictures/CCDCam/`
-- **Video mode**: H.264 MP4 plus AAC audio, filter baked in via a MediaCodec dual-render pipeline, saved to `Movies/CCDCam/`
+- **Video mode**: H.264 MP4 plus AAC audio recorded by CameraX `Recorder`, filter baked in via a CameraX `CameraEffect`, saved to `Movies/CCDCam/`
 - **Pinch-to-zoom** clamped to the lens's min/max
 - **Camcorder HUD overlay**: corner viewfinder brackets, `HH:MM:SS:FF` timecode, `STBY`/`REC` indicator with a blinking red dot, tape mode label, battery icon, live date stamp
 - **Front/back camera flip**
@@ -51,7 +51,7 @@ Forest, shot on a Pixel through CCDCam:
 
 `app/src/main/assets/shaders/ccd.frag`, in order:
 
-1. UV quantization to a 540x480 cell grid, so GPU bilinear inside each cell plus cell-center sampling reproduces a downsample-then-nearest-upsample Hi8 chunkiness without an offscreen pass
+1. UV quantization to a 720x720 cell grid, so GPU bilinear inside each cell plus cell-center sampling reproduces a downsample-then-nearest-upsample Hi8 chunkiness without an offscreen pass
 2. Chroma shift on R/B sampling for NTSC colour bleed
 3. Vertical CCD smear, where bright pixels bleed up and down their column
 4. Horizontal flare around extreme highlights
@@ -66,17 +66,21 @@ constants live in `tools/sim.py` so changes can be previewed in Python before re
 
 ## Architecture
 
-- **CameraX 1.4** drives the `Preview` use case into a custom `SurfaceTexture` (CameraX `VideoCapture` is intentionally not used, since it would bypass the shader)
-- **`CcdRenderer`** is a `GLSurfaceView.Renderer` that draws the shader-filtered scene to the on-screen surface every frame, and to an optional second `EGLSurface` backed by `MediaCodec`'s input Surface when recording (throttled to a steady 30 fps for clean encoder timing)
-- **`VideoRecorder`** wraps the H.264 encoder, the AAC encoder (`AudioRecord` into `MediaCodec` AAC), and a shared `MediaMuxer`. Both tracks use the same `startNs` reference so the muxed MP4 reports a correct duration
-- **Photo capture** does a `glReadPixels` of the display framebuffer the frame after `requestFrameSnapshot`, Y-flips the bitmap, and writes a JPEG via `MediaStore`
+- **CameraX 1.4** binds `Preview` (shown in a `PreviewView`) and `VideoCapture<Recorder>` together with one `CameraEffect` in a `UseCaseGroup` (`MainActivity.bindCamera()`)
+- **`CcdEffect`** attaches **`CcdSurfaceProcessor`** to the `PREVIEW` and `VIDEO_CAPTURE` targets. The processor owns an EGL context, receives camera frames in an OES `SurfaceTexture`, and draws `ccd.frag` once per output (preview surface and video encoder surface) with the per-output transform from `SurfaceOutput.updateTransformMatrix`, keeping the camera timestamp via `eglPresentationTimeANDROID`
+- **Video and audio** are encoded and muxed by CameraX `Recorder` (H.264 + AAC, `Quality.HD`, `withAudioEnabled()`), written through `MediaStoreOutputOptions`
+- **Photo capture** takes `PreviewView.bitmap` (already filtered), rotates it to the device orientation, and writes a JPEG via `MediaStore`
+- **HUD** is plain Android views over the preview (`activity_main.xml`, `BatteryHudView`); it is not part of the recorded video or the saved photo
 
 ## Build
 
 ```
-./gradlew assembleDebug     # debug APK
-./gradlew assembleRelease   # release APK, signed with the bundled debug keystore
+./gradlew assembleDebug        # debug APK
+./gradlew assembleRelease      # release APK, signed with the bundled debug keystore
+./gradlew testDebugUnitTest    # JVM unit tests
 ```
+
+The Gradle wrapper pins Gradle 8.9 and needs JDK 17 (AGP 8.5).
 
 Requires Android 7.0 (API 24) or newer. CI builds on every push, and release APKs are
 produced on `v*` tags via `.github/workflows/release.yml`.
@@ -95,7 +99,7 @@ values in `tools/sim.py` (kept in sync by hand). Run the sim on a sample frame:
 ```
 python tools/sim.py input.jpg output.jpg
 python tools/sim.py input.mp4 output.mp4   # requires ffmpeg
-python tools/test_sim.py                    # 8 invariants the shader has to satisfy
+python tools/test_sim.py                    # invariants the shader sim has to satisfy
 ```
 
 ## License

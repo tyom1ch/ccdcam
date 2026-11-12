@@ -9,13 +9,19 @@ concurrency:
 jobs:
   mirror:
     runs-on: ubuntu-latest
+    # Forks don't have GITLAB_TOKEN; skip the mirror instead of failing every push.
+    env:
+      GL_TOKEN: ${{ secrets.GITLAB_TOKEN }}
     steps:
+      - name: Skip (no GITLAB_TOKEN configured)
+        if: env.GL_TOKEN == ''
+        run: echo "GITLAB_TOKEN secret is not set; skipping GitLab mirror."
       - name: Clone source mirror
+        if: env.GL_TOKEN != ''
         run: |
           git clone --mirror "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" repo.git
           git -C repo.git config http.postBuffer 524288000
       - name: Push to GitLab
-        env:
-          GL_TOKEN: ${{ secrets.GITLAB_TOKEN }}
+        if: env.GL_TOKEN != ''
         run: |
           git -C repo.git push --mirror "https://oauth2:${GL_TOKEN}@gitlab.com/Sturq/${{ github.event.repository.name }}.git"
