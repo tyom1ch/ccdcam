@@ -17,6 +17,7 @@ import android.view.Surface
 import androidx.camera.core.SurfaceOutput
 import androidx.camera.core.SurfaceProcessor
 import androidx.camera.core.SurfaceRequest
+import at.sturq.ccdcam.camera.FrameRateMeter
 import at.sturq.ccdcam.geometry.EffectGeometry
 import at.sturq.ccdcam.osd.OsdGlRenderer
 import at.sturq.ccdcam.osd.OsdQuad
@@ -48,6 +49,9 @@ class CcdSurfaceProcessor(
 
     private val thread = HandlerThread(name).apply { start() }
     private val osd: OsdGlRenderer? = if (burnsOsd) OsdGlRenderer(context) else null
+
+    /** Delivered frame rate of this stream, from camera frame timestamps. */
+    val frameRateMeter = FrameRateMeter()
 
     /** Burned-in OSD quads (LCD units), or null for none. Replaced, never mutated. */
     @Volatile var osdQuads: List<OsdQuad>? = null
@@ -124,6 +128,7 @@ class CcdSurfaceProcessor(
         handler.post {
             if (released) { request.willNotProvideSurface(); return@post }
             ensureInitialized()
+            frameRateMeter.reset()
             inputResolutionW = request.resolution.width
             inputResolutionH = request.resolution.height
             // recreate SurfaceTexture for each new input
@@ -187,6 +192,7 @@ class CcdSurfaceProcessor(
             return
         }
         val pts = st.timestamp
+        frameRateMeter.onFrame(pts)
         val frameProfile = profile
         val frameFraming = framing
         for ((output, entry) in outputs) {

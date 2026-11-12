@@ -143,6 +143,19 @@
                 android:text="WIDE 16:9"
                 tools:ignore="HardcodedText" />
 
+            <!-- Delivered frame rate (measured), e.g. "PAL 25p" or "30p · 25p n/a". -->
+            <TextView
+                android:id="@+id/fpsTxt"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingHorizontal="8dp"
+                android:fontFamily="monospace"
+                android:textSize="10sp"
+                android:textColor="@color/hud_dim"
+                android:letterSpacing="0.08"
+                android:text="--p"
+                tools:ignore="HardcodedText" />
+
         </LinearLayout>
 
         <ImageButton
