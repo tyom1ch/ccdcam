@@ -188,6 +188,13 @@ object ClipAudioProcessor {
         val m = MediaMuxer(dst.path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
         try {
             m.setOrientationHint(rotationCw)
+            // Keep the colour description of the CameraX file (BT.709, limited range): the
+            // extractor does not always pass it on, and players would then guess.
+            if (!vFmt.containsKey(MediaFormat.KEY_COLOR_STANDARD)) {
+                vFmt.setInteger(MediaFormat.KEY_COLOR_STANDARD, MediaFormat.COLOR_STANDARD_BT709)
+                vFmt.setInteger(MediaFormat.KEY_COLOR_RANGE, MediaFormat.COLOR_RANGE_LIMITED)
+                vFmt.setInteger(MediaFormat.KEY_COLOR_TRANSFER, MediaFormat.COLOR_TRANSFER_SDR_VIDEO)
+            }
             val vt = m.addTrack(vFmt)
             val at = m.addTrack(aFmt)
             m.start()

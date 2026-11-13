@@ -9,7 +9,7 @@ class FirmwareNavigatorTest {
 
     private fun nav(lamp: Lamp = Lamp.TAPE, s: FirmwareSettings = FirmwareSettings()) = FirmwareNavigator(s, lamp)
 
-    private val stdIndex = HC90eMenu.categories.indexOfFirst { it.id == "STANDARD SET" }
+    private val stdIndex = HC90eMenu.categoriesFor(Lamp.TAPE).indexOfFirst { it.id == "STANDARD SET" }
 
     @Test
     fun pMenuOpensOnPageOneAndWraps() {
@@ -79,12 +79,12 @@ class FirmwareNavigatorTest {
     fun pMenuShortcutReturnsToPMenu() {
         val n = nav()
         n.openPMenu()
-        n.pMenuPage(2)                                    // page 3/3 holds REC MODE
+        n.pMenuPage(1)                                    // page 2/3 holds BEEP
         n.pMenuSelect(HC90eMenu.BEEP)
         n.selectOption(FirmwareSettings.BEEP_OFF)
         n.ok()
         assertFalse(n.settings.beepOn)
-        assertEquals(Screen.PMenu(2), n.screen)
+        assertEquals(Screen.PMenu(1), n.screen)
     }
 
     @Test
@@ -92,21 +92,27 @@ class FirmwareNavigatorTest {
         val normal = nav()
         normal.openPMenu(); normal.pMenuSelect(HC90eMenu.P_MENU)
         normal.drumStep(down = true)
-        assertEquals(Screen.MenuCategories(HC90eMenu.categories.size - 1), normal.screen)  // items move down
+        assertEquals(Screen.MenuCategories(1), normal.screen)        // ▼ = next row, in list order
+        normal.drumStep(down = false)
+        normal.drumStep(down = false)
+        assertEquals(Screen.MenuCategories(0), normal.screen)        // stops at the top, no wrap
+        repeat(20) { normal.drumStep(down = true) }
+        assertEquals(Screen.MenuCategories(normal.menu.size - 1), normal.screen)
 
         val opposite = nav(s = FirmwareSettings(menuRotate = FirmwareSettings.MENU_ROTATE_OPPOSITE))
         opposite.openPMenu(); opposite.pMenuSelect(HC90eMenu.P_MENU)
-        opposite.drumStep(down = true)
+        opposite.drumStep(down = false)
         assertEquals(Screen.MenuCategories(1), opposite.screen)
     }
 
     @Test
-    fun unavailableItemCannotBeOpened() {
+    fun drumListsOnlyWorkingItems() {
         val n = nav()
         n.openPMenu(); n.pMenuSelect(HC90eMenu.P_MENU)
         n.ok()                                             // CAMERA SET
-        assertEquals(NavEffect.None, n.ok())               // PROGRAM AE: not emulated
         assertEquals(Screen.MenuItems(0, 0), n.screen)
+        n.ok()                                             // first row works (SPOT METER), no dead PROGRAM AE
+        assertEquals(Screen.Spot(HC90eMenu.SPOT_METER), n.screen)
     }
 
     @Test

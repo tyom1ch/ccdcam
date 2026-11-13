@@ -213,6 +213,17 @@ object HC90eMenu {
 
     private val byId: Map<String, MenuItem> = categories.flatMap { it.items }.associateBy { it.id }
 
+    /**
+     * The menu as shown in [lamp]: only items the app implements and that work in this lamp;
+     * categories left empty are dropped. [categories] keeps the full guide tree for reference.
+     */
+    fun categoriesFor(lamp: Lamp): List<MenuCategory> = categories
+        .map { c -> c.copy(items = c.items.filter { it.isAvailable(lamp) }) }
+        .filter { it.items.isNotEmpty() }
+
+    /** Index of a category in the full tree (selects its pictogram). */
+    fun iconIndex(categoryId: String): Int = categories.indexOfFirst { it.id == categoryId }
+
     fun item(id: String): MenuItem = byId[id] ?: throw IllegalArgumentException("unknown menu item $id")
 
     fun itemOrNull(id: String): MenuItem? = byId[id]
@@ -237,6 +248,8 @@ object HC90eMenu {
         REC_MODE, AUDIO_MODE,
         REMAINING, BEEP,
         BURN_OSD, P_MENU_SET_UP,
+        // app shortcuts
+        AUDIO_EMU, SCANLINES,
     )
 
     /** PLAY/EDIT Personal Menu. Page 1 is documented (guide p. 34); the rest is an approximation. */
@@ -250,7 +263,9 @@ object HC90eMenu {
         "MULTI-SOUND", P_MENU_SET_UP,
     )
 
-    fun pMenuFor(lamp: Lamp): List<String> = if (lamp == Lamp.PLAY_EDIT) pMenuPlayEdit else pMenuCameraTape
+    /** Personal Menu as shown in [lamp]: entries that do nothing here are left out. */
+    fun pMenuFor(lamp: Lamp): List<String> =
+        (if (lamp == Lamp.PLAY_EDIT) pMenuPlayEdit else pMenuCameraTape).filter { pMenuEntryAvailable(it, lamp) }
 
     fun pageCount(entries: List<String>): Int = (entries.size + P_MENU_PAGE_SIZE - 1) / P_MENU_PAGE_SIZE
 

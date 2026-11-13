@@ -174,8 +174,8 @@ LIGHT is the phone torch and is independent of NightShot.
       (same frame count, 25 fps), rotation correct.
 - [ ] ORIG AUDIO KEEP: original clip unchanged + `<name>_dv.mp4` with processed sound.
 - [ ] A/V sync after processing (clap test), no clicks at chunk borders.
-- [ ] AUDIO EMU RETRO: no low end, band ends ~9.5 kHz, slightly crunchy (19 kHz crusher with
-      ADC/DAC filters, 8 bits, 40 % wet), AGC pumping; no clipping.
+- [ ] AUDIO EMU RETRO: no low end, slightly crunchy/aliased highs (19 kHz sample-hold without
+      anti-aliasing, 10 bits, 60 % wet), AGC pumping; no clipping.
 
 ## 17. DATA CODE, rotation, UI sounds (final)
 - [ ] Record a scene, PLAY/EDIT, P-MENU page 2 -> DATA CODE DATE/TIME: date/time of the frame
@@ -189,3 +189,17 @@ LIGHT is the phone torch and is independent of NightShot.
       INTERLACE OFF, CCD SMEAR ON on a lamp, COLOR VIVID...); defaults = previous look.
       CAMERA SET -> SHARPNESS SOFT/SHARP. STANDARD SET -> BEEP VOL LOW/MID/HIGH.
 - [ ] REC start/stop sound at 1/5 of the level of the other keys.
+
+## 18. UI polish (stage 14)
+- [ ] Fast taps: each tap clicks once (a sound plays at least 40 ms before the next cuts it);
+      no late clicks after the taps stop.
+- [ ] PLAY/EDIT: turning the phone sideways turns the picture with the OSD (fills the LCD
+      region); back to portrait restores it. Transport, DATA CODE unchanged.
+- [ ] MENU / P-MENU show only working entries (TAPE, MEMORY, PLAY/EDIT each); no grayed rows.
+- [ ] Drum: ▼ goes to the next row in the order shown, ▲ back; stops at the first/last row.
+- [ ] Tape noise barely audible under the sound; RETRO sounds like the clips of 00:59.
+- [ ] Record, STOP: the clip appears in Movies/Handycam only after processing ("Saved to ..."),
+      complete, rotated, with the processed sound; no half-written file in the gallery.
+- [ ] Kill the app right after STOP: on next start the clip is published from files/rec.
+- [ ] PLAY/EDIT with NightShot on: no NightShot indicator or caption.
+- [ ] PLAY/EDIT, home, back: the clip shows the same frame, paused.

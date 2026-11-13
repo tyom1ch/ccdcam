@@ -73,19 +73,37 @@ class FrameDecimator(fps: Int = FrameRatePlan.PAL_FPS) {
     private var nextNs = Long.MIN_VALUE
 
     /** Presentation time for the frame captured at [timestampNs], or null to drop it. */
+    fun accept(timestampNs: Long): Long? = ticks(timestampNs).lastOrNull()
+
+    /**
+     * Grid ticks to render the frame captured at [timestampNs] for (empty = drop it). When the
+     * camera skipped a frame or two (AE slowing down in low light), the ticks that passed are
+     * filled with this frame, so the file stays 25p without holes; after a longer stall
+     * (> [MAX_FILL] ticks) the grid just moves on.
+     */
     @Synchronized
-    fun accept(timestampNs: Long): Long? {
+    fun ticks(timestampNs: Long): LongArray {
         if (nextNs == Long.MIN_VALUE) nextNs = timestampNs
-        if (timestampNs < nextNs - periodNs / 2) return null
-        // Camera gap: skip ticks that already passed, keep the grid.
-        while (timestampNs - nextNs > periodNs / 2) nextNs += periodNs
-        val out = nextNs
+        if (timestampNs < nextNs - periodNs / 2) return LongArray(0)
+        val out = ArrayList<Long>(2)
+        var missed = 0
+        while (timestampNs - nextNs > periodNs / 2) {
+            if (missed < MAX_FILL) out += nextNs
+            missed++
+            nextNs += periodNs
+        }
+        if (missed > MAX_FILL) out.clear()
+        out += nextNs
         nextNs += periodNs
-        return out
+        return out.toLongArray()
     }
 
     @Synchronized
     fun reset() {
         nextNs = Long.MIN_VALUE
+    }
+
+    companion object {
+        const val MAX_FILL = 3
     }
 }

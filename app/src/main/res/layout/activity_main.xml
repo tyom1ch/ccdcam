@@ -30,12 +30,11 @@
         app:layout_constraintStart_toStartOf="@id/previewView"
         app:layout_constraintEnd_toEndOf="@id/previewView">
 
-        <!-- VideoView sizes itself to the clip's aspect; centred in the black area. -->
-        <VideoView
+        <!-- Fits the clip into the LCD region and turns it with the phone, like the OSD. -->
+        <at.sturq.ccdcam.firmware.PlaybackView
             android:id="@+id/playbackView"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center" />
+            android:layout_width="match_parent"
+            android:layout_height="match_parent" />
     </FrameLayout>
 
     <!-- HC90E touch-panel display (P-MENU, MENU, indicators). Phone UI only, never recorded. -->

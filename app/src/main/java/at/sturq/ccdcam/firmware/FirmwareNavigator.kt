@@ -68,6 +68,9 @@ class FirmwareNavigator(
 
     private val pMenuEntries get() = HC90eMenu.pMenuFor(lamp)
 
+    /** MENU categories as shown in the current lamp (working items only). */
+    val menu: List<MenuCategory> get() = HC90eMenu.categoriesFor(lamp)
+
     val pMenuPageCount: Int get() = HC90eMenu.pageCount(pMenuEntries)
 
     fun pMenuPageEntries(page: Int): List<String> = HC90eMenu.page(pMenuEntries, page)
@@ -92,15 +95,15 @@ class FirmwareNavigator(
     // ---- MENU drum ----
 
     /**
-     * ▲ / ▼ on the drum. [down] = the ▼ button. MENU ROTATE NORMAL "scrolls the menu items
-     * downwards by touching ▼" (the item above moves into the bar), OPPOSITE scrolls upwards.
+     * ▲ / ▼ on the drum. [down] = the ▼ button. NORMAL: ▼ selects the next row below, in the
+     * order the list is shown; OPPOSITE reverses the buttons. The list stops at its ends.
      */
     fun drumStep(down: Boolean) {
         val normal = settings.menuRotate == FirmwareSettings.MENU_ROTATE_NORMAL
-        val delta = if (down == normal) -1 else 1
+        val delta = if (down == normal) 1 else -1
         screen = when (val s = screen) {
-            is Screen.MenuCategories -> s.copy(index = wrap(s.index + delta, HC90eMenu.categories.size))
-            is Screen.MenuItems -> s.copy(index = wrap(s.index + delta, HC90eMenu.categories[s.category].items.size))
+            is Screen.MenuCategories -> s.copy(index = (s.index + delta).coerceIn(0, menu.size - 1))
+            is Screen.MenuItems -> s.copy(index = (s.index + delta).coerceIn(0, menu[s.category].items.size - 1))
             else -> s
         }
     }
@@ -108,8 +111,8 @@ class FirmwareNavigator(
     /** Touching a row of the drum selects it directly (guide p. 34 ③). */
     fun drumTouch(index: Int) {
         screen = when (val s = screen) {
-            is Screen.MenuCategories -> s.copy(index = wrap(index, HC90eMenu.categories.size))
-            is Screen.MenuItems -> s.copy(index = wrap(index, HC90eMenu.categories[s.category].items.size))
+            is Screen.MenuCategories -> s.copy(index = index.coerceIn(0, menu.size - 1))
+            is Screen.MenuItems -> s.copy(index = index.coerceIn(0, menu[s.category].items.size - 1))
             else -> s
         }
     }
@@ -122,7 +125,7 @@ class FirmwareNavigator(
             NavEffect.None
         }
         is Screen.MenuItems -> {
-            val item = HC90eMenu.categories[s.category].items[s.index]
+            val item = menu[s.category].items[s.index]
             if (item.isAvailable(lamp)) activate(item, returnTo = s) else NavEffect.None
         }
         is Screen.Setting -> {
@@ -174,5 +177,4 @@ class FirmwareNavigator(
         return NavEffect.None
     }
 
-    private fun wrap(i: Int, n: Int) = ((i % n) + n) % n
 }

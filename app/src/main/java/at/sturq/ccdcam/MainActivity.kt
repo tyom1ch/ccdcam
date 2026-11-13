@@ -36,7 +36,6 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.core.UseCaseGroup
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.video.MediaStoreOutputOptions
 import androidx.camera.video.Quality
 import androidx.camera.video.QualitySelector
 import androidx.camera.video.Recorder
@@ -46,9 +45,7 @@ import androidx.camera.video.VideoRecordEvent
 import androidx.camera.view.PreviewView
 import androidx.core.content.ContextCompat
 import at.sturq.ccdcam.camera.FrameDecimator
-import at.sturq.ccdcam.camera.ByteStore
 import at.sturq.ccdcam.camera.FrameRatePlan
-import at.sturq.ccdcam.camera.Mp4Rotation
 import at.sturq.ccdcam.geometry.EffectGeometry
 import at.sturq.ccdcam.databinding.ActivityMainBinding
 import at.sturq.ccdcam.firmware.Hc90eController
@@ -56,6 +53,7 @@ import at.sturq.ccdcam.firmware.Lamp
 import at.sturq.ccdcam.profile.Profiles
 import at.sturq.ccdcam.settings.AspectSetting
 import at.sturq.ccdcam.settings.SettingsStore
+import at.sturq.ccdcam.camera.ClipStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -129,6 +127,7 @@ class MainActivity : AppCompatActivity() {
         osd.animate().cancel()
         osd.animate().alpha(0f).setDuration(110).withEndAction {
             osd.deviceRotationCw = cw
+            binding.playbackView.deviceRotationCw = cw   // PLAY/EDIT picture turns with the OSD
             osd.animate().alpha(1f).setDuration(170).start()
         }.start()
     }
@@ -283,6 +282,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         hc.start()
+        recoverClips()
         val missing = missingPerms()
         if (missing.isNotEmpty()) permLauncher.launch(missing) else bindCamera()
     }
@@ -326,6 +326,7 @@ class MainActivity : AppCompatActivity() {
             // pillar bars. The LCD stays 16:9 (the preview shows 4:3 with bars, like the HC90).
             val streamAspect = if (wide) AspectRatio.RATIO_16_9 else AspectRatio.RATIO_4_3
             binding.firmwareOsd.regionAspectInView = if (wide) 9f / 16f else 3f / 4f
+            binding.playbackView.regionAspect = binding.firmwareOsd.regionAspectInView
 
             val selector = CameraSelector.Builder().requireLensFacing(lensFacing).build()
 
@@ -473,16 +474,10 @@ class MainActivity : AppCompatActivity() {
         }
         val name = "ccdcam_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
             .format(System.currentTimeMillis())
-        val cv = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.mp4")
-            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                put(MediaStore.Video.Media.RELATIVE_PATH, Hc90eController.MOVIES_DIR)
-            }
-        }
-        val opts = MediaStoreOutputOptions.Builder(
-            contentResolver, MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        ).setContentValues(cv).build()
+        // Recorded privately first; published to Movies/Handycam once finished (ClipStore).
+        val recFile = ClipStore.recordingFile(this, name)
+        val takenMs = System.currentTimeMillis()
+        val opts = androidx.camera.video.FileOutputOptions.Builder(recFile).build()
 
         recordingRotation = lastSurfaceRotation
         recordingDisplayCw = camera?.let {
@@ -511,119 +506,89 @@ class MainActivity : AppCompatActivity() {
                     }
                     is VideoRecordEvent.Finalize -> {
                         val dataCode = cameraDataLog.stop()
-                        if (!event.hasError()) ioScope.launch {
-                            try { CameraDataStore.save(hc.dataCodeDir(), "$name.mp4", dataCode) }
-                            catch (t: Throwable) { Log.w(TAG, "data code save failed", t) }
+                        // Some errors (camera closed, storage full) still leave a valid file:
+                        // whatever is playable is kept, like tape that was running.
+                        val written = recFile.isFile && recFile.length() > 0
+                        if (event.hasError()) Log.w(TAG, "recording finalized with error ${event.error}", event.cause)
+                        hc.onRecordingFinished(event.recordingStats.recordedDurationNanos / 1_000_000, saved = written)
+                        if (written) {
+                            ioScope.launch {
+                                try { CameraDataStore.save(hc.dataCodeDir(), "$name.mp4", dataCode) }
+                                catch (t: Throwable) { Log.w(TAG, "data code save failed", t) }
+                            }
+                            finishClip(recFile, name, takenMs, recordingDisplayCw)
+                        } else {
+                            ClipStore.done(name)
+                            recFile.delete()
+                            Toast.makeText(this, "Save error: ${event.error}", Toast.LENGTH_SHORT).show()
                         }
-                        hc.onRecordingFinished(
-                            event.recordingStats.recordedDurationNanos / 1_000_000,
-                            saved = event.outputResults.outputUri != android.net.Uri.EMPTY,
-                        )
-                        if (!event.hasError()) finishClip(event.outputResults.outputUri, recordingDisplayCw)
                         recordingRotation = null
                         updateFraming()
                         turnOsd(photoRotationCw)   // follow the phone again
                         binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video)
-                        val msg = if (event.hasError())
-                            "Save error: ${event.error}"
-                        else
-                            "Saved to ${Hc90eController.MOVIES_DIR}"
-                        Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
                     }
                 }
             }
     }
 
     /**
-     * After Finalize: camcorder sound (AUDIO EMU) and the display rotation. The original file is
-     * only replaced after processing succeeded; on failure it keeps its sound and gets the rotation.
+     * After Finalize, off the main thread: display rotation, camcorder sound (AUDIO EMU, tape
+     * noise), then one publish of the finished file to Movies/Handycam. Processing failure keeps
+     * the original sound; the original is only lost if it is not playable at all.
      */
-    private fun finishClip(uri: android.net.Uri, cwDegrees: Int) {
-        if (uri == android.net.Uri.EMPTY) return
+    private fun finishClip(file: java.io.File, name: String, takenMs: Long, cwDegrees: Int) {
         val s = hc.navigator.settings
         val profile = s.audioProfile()
         val tape = s.tapeNoise == FirmwareSettings.ON
-        if (profile.bypass && !tape) {
-            applyClipRotation(uri, cwDegrees)
-            return
-        }
         val keep = s.origAudio == FirmwareSettings.ORIG_AUDIO_KEEP
+        val dir = Hc90eController.MOVIES_DIR
         ioScope.launch {
-            val tmp = java.io.File(cacheDir, "hc_audio_${System.nanoTime()}.mp4")
+            val processed = ClipStore.processedFile(this@MainActivity, name)
+            var published = false
             try {
-                // UI sounds are not mixed in: the phone's microphone already records them.
-                val mixer = SfxMixer(if (tape) hc.tapeLoopPcm() else null, SfxMixer.LOOP_GAIN, emptyList(), 0f)
-                val ok = ClipAudioProcessor.process(this@MainActivity, uri, tmp, profile, cwDegrees, mixer)
-                Log.i(TAG, "clip audio $profile ok=$ok keep=$keep")
-                when {
-                    !ok -> applyClipRotation(uri, cwDegrees)
-                    keep -> {
-                        applyClipRotation(uri, cwDegrees)
-                        saveProcessedCopy(uri, tmp)
-                    }
-                    else -> contentResolver.openOutputStream(uri, "wt")?.use { o ->
-                        tmp.inputStream().use { it.copyTo(o) }
-                    }
+                if (!ClipStore.isPlayable(file)) {
+                    Log.w(TAG, "clip $name not playable, dropped")
+                    file.delete()
+                    return@launch
+                }
+                Log.i(TAG, "clip rotation $cwDegrees written=${ClipStore.applyRotation(file, cwDegrees)}")
+                val ok = if (profile.bypass && !tape) false else {
+                    // UI sounds are not mixed in: the phone's microphone already records them.
+                    val mixer = SfxMixer(if (tape) hc.tapeLoopPcm() else null, SfxMixer.LOOP_GAIN, emptyList(), 0f)
+                    ClipAudioProcessor.process(this@MainActivity, android.net.Uri.fromFile(file), processed, profile, cwDegrees, mixer)
+                        .also { Log.i(TAG, "clip audio $profile ok=$it keep=$keep") }
+                }
+                published = when {
+                    !ok -> ClipStore.publish(this@MainActivity, file, "$name.mp4", takenMs, dir) != null
+                    keep -> ClipStore.publish(this@MainActivity, file, "$name.mp4", takenMs, dir) != null &&
+                        ClipStore.publish(this@MainActivity, processed, "${name}_dv.mp4", takenMs, dir) != null
+                    else -> ClipStore.publish(this@MainActivity, processed, "$name.mp4", takenMs, dir) != null
                 }
             } catch (t: Throwable) {
                 Log.w(TAG, "clip finish failed", t)
-            } finally {
-                tmp.delete()
-            }
-        }
-    }
-
-    /** ORIG AUDIO KEEP: the processed clip is saved next to the original as <name>_dv.mp4. */
-    private fun saveProcessedCopy(original: android.net.Uri, file: java.io.File) {
-        val name = contentResolver.query(original, arrayOf(MediaStore.MediaColumns.DISPLAY_NAME), null, null, null)
-            ?.use { c -> if (c.moveToFirst()) c.getString(0) else null } ?: "clip.mp4"
-        val cv = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, name.removeSuffix(".mp4") + "_dv.mp4")
-            put(MediaStore.MediaColumns.MIME_TYPE, "video/mp4")
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                put(MediaStore.Video.Media.RELATIVE_PATH, Hc90eController.MOVIES_DIR)
-            }
-        }
-        val dst = contentResolver.insert(MediaStore.Video.Media.EXTERNAL_CONTENT_URI, cv) ?: return
-        contentResolver.openOutputStream(dst)?.use { o -> file.inputStream().use { it.copyTo(o) } }
-    }
-
-    /** Writes the display rotation into the saved MP4 (in place, 36 bytes). */
-    private fun applyClipRotation(uri: android.net.Uri, cwDegrees: Int) {
-        if (uri == android.net.Uri.EMPTY) return
-        ioScope.launch {
-            try {
-                contentResolver.openFileDescriptor(uri, "rw")?.use { pfd ->
-                    // Channels on the pfd's descriptor; the pfd owns and closes it.
-                    val rd = java.io.FileInputStream(pfd.fileDescriptor).channel
-                    val wr = java.io.FileOutputStream(pfd.fileDescriptor).channel
-                    run {
-                        run {
-                            val store = object : ByteStore {
-                                override val size get() = rd.size()
-                                override fun read(position: Long, dst: ByteArray) {
-                                    val buf = java.nio.ByteBuffer.wrap(dst)
-                                    var p = position
-                                    while (buf.hasRemaining()) {
-                                        val n = rd.read(buf, p)
-                                        if (n < 0) throw java.io.EOFException()
-                                        p += n
-                                    }
-                                }
-                                override fun write(position: Long, src: ByteArray) {
-                                    val buf = java.nio.ByteBuffer.wrap(src)
-                                    var p = position
-                                    while (buf.hasRemaining()) p += wr.write(buf, p)
-                                }
-                            }
-                            val ok = Mp4Rotation.setVideoRotation(store, cwDegrees)
-                            Log.i(TAG, "clip rotation $cwDegrees written=$ok")
-                        }
-                    }
+                // last resort: the recording as it is
+                if (!published && file.isFile) {
+                    published = ClipStore.publish(this@MainActivity, file, "$name.mp4", takenMs, dir) != null
                 }
-            } catch (t: Throwable) {
-                Log.w(TAG, "clip rotation failed", t)
+            } finally {
+                processed.delete()
+                if (published) file.delete()     // otherwise kept: published on next start
+                ClipStore.done(name)
             }
+            withContext(Dispatchers.Main) {
+                val msg = if (published) "Saved to $dir" else "Save error: kept for retry"
+                Toast.makeText(applicationContext, msg, Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /** Recordings a killed process left unpublished (see ClipStore.recover). */
+    private fun recoverClips() {
+        ioScope.launch {
+            val names = ClipStore.recover(this@MainActivity, Hc90eController.MOVIES_DIR) { name ->
+                at.sturq.ccdcam.firmware.CameraDataFormat.startFromName(name) ?: System.currentTimeMillis()
+            }
+            if (names.isNotEmpty()) Log.i(TAG, "recovered clips $names")
         }
     }
 

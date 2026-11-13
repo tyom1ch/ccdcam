@@ -85,6 +85,18 @@ class FrameRateTest {
     }
 
     @Test
+    fun droppedCameraFramesAreFilled() {
+        val d = FrameDecimator()
+        val out = ArrayList<Long>()
+        var t = 0L
+        repeat(300) { i ->
+            if (i % 37 != 20 && i !in 100..101) d.ticks(t).forEach { out += it }   // single + double drops
+            t += 33_333_333L
+        }
+        out.zipWithNext { a, b -> assertEquals(40_000_000L, b - a) }
+    }
+
+    @Test
     fun cameraGapKeepsTheGrid() {
         val d = FrameDecimator()
         val a = d.accept(0L)!!
