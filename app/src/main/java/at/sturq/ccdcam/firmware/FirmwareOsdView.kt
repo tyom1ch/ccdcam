@@ -52,6 +52,8 @@ class FirmwareOsdView @JvmOverloads constructor(
         fun onSpot(itemId: String, viewX: Float, viewY: Float)
         /** SPOT screen: [AUTO] — back to automatic focus / metering. */
         fun onSpotAuto(itemId: String)
+        /** Tactile feedback of the touch panel. */
+        fun onHaptic(event: at.sturq.ccdcam.haptics.HapticEvent) {}
     }
 
     var listener: Listener? = null
@@ -455,11 +457,21 @@ class FirmwareOsdView @JvmOverloads constructor(
         // Category icon column on the left (rotating cylinder of pictograms).
         drawCategoryIcons(c, menu, if (categoryLevel) index else category, centerY)
 
-        button(c, b(LcdLayout.DRUM_UP), Style.CYAN, icon = { cv, bx -> triangle(cv, bx, up = true) }) { nav.drumStep(down = false) }
-        button(c, b(LcdLayout.DRUM_DOWN), Style.CYAN, icon = { cv, bx -> triangle(cv, bx, up = false) }) { nav.drumStep(down = true) }
+        button(c, b(LcdLayout.DRUM_UP), Style.CYAN, icon = { cv, bx -> triangle(cv, bx, up = true) }) { drumStep(nav, down = false) }
+        button(c, b(LcdLayout.DRUM_DOWN), Style.CYAN, icon = { cv, bx -> triangle(cv, bx, up = false) }) { drumStep(nav, down = true) }
         button(c, b(LcdLayout.MENU_CLOSE), Style.BLUE, icon = ::iconClose) { nav.close() }
         if (!categoryLevel) button(c, b(LcdLayout.MENU_BACK), Style.CYAN, icon = ::iconReturn) { nav.back() }
         button(c, b(LcdLayout.MENU_OK), Style.CYAN, label = "OK") { listener?.onNavEffect(nav.ok()) }
+    }
+
+    /** The drum turns one detent, or hits its end stop. */
+    private fun drumStep(nav: FirmwareNavigator, down: Boolean) {
+        val before = nav.screen
+        nav.drumStep(down)
+        listener?.onHaptic(
+            if (nav.screen != before) at.sturq.ccdcam.haptics.HapticEvent.SLIDER_DETENT
+            else at.sturq.ccdcam.haptics.HapticEvent.SLIDER_ENDSTOP,
+        )
     }
 
     private fun drawCategoryIcons(c: Canvas, menu: List<MenuCategory>, selected: Int, centerY: Float) {
@@ -820,7 +832,13 @@ class FirmwareOsdView @JvmOverloads constructor(
                     return nav.isMenuOpen
                 }
                 pressed = hit
-                if (hit.enabled) listener?.onBeep(Beep.TOUCH)   // key goes down: click
+                if (hit.enabled) {
+                    listener?.onBeep(Beep.TOUCH)                  // key goes down: click
+                    listener?.onHaptic(at.sturq.ccdcam.haptics.HapticEvent.BUTTON_PRESS)
+                } else {
+                    // a grayed key: no "pressed" confirmation
+                    listener?.onHaptic(at.sturq.ccdcam.haptics.HapticEvent.ACTION_REJECTED)
+                }
                 invalidate()
                 return true
             }

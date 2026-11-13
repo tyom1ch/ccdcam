@@ -106,6 +106,10 @@ class MainActivity : AppCompatActivity() {
     @Volatile private var photoRotationCw: Int = 0
     private val orientationStabilizer = at.sturq.ccdcam.camera.OrientationStabilizer()
 
+    private lateinit var haptics: at.sturq.ccdcam.haptics.Hc90eHapticEngine
+    private lateinit var studio: at.sturq.ccdcam.studio.StudioPanel
+    private var studioState = at.sturq.ccdcam.studio.StudioState()
+
     private val cameraDataLog = CameraDataLog()
     private val captureDataCallback = object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
         override fun onCaptureCompleted(
@@ -190,6 +194,8 @@ class MainActivity : AppCompatActivity() {
         setContentView(binding.root)
 
         settings = SettingsStore(this)
+        studioState = settings.studio
+        haptics = at.sturq.ccdcam.haptics.Hc90eHapticEngine(this, binding.root).also { it.level = studioState.haptics }
         wide = settings.aspect == AspectSetting.RATIO_16_9
 
         previewProcessor = CcdSurfaceProcessor(this, name = "CcdPreview")
@@ -216,9 +222,17 @@ class MainActivity : AppCompatActivity() {
                 val cam = camera ?: return
                 val point = binding.previewView.meteringPointFactory.createPoint(viewX, viewY)
                 val flags = if (focus) FocusMeteringAction.FLAG_AF else FocusMeteringAction.FLAG_AE
-                cam.cameraControl.startFocusAndMetering(
+                val result = cam.cameraControl.startFocusAndMetering(
                     FocusMeteringAction.Builder(point, flags).disableAutoCancel().build(),
                 )
+                // Only a real lock is confirmed; a failed or cancelled focus is felt as refused.
+                result.addListener({
+                    val ok = runCatching { result.get().isFocusSuccessful }.getOrDefault(false)
+                    if (focus) haptics.fire(
+                        if (ok) at.sturq.ccdcam.haptics.HapticEvent.FOCUS_LOCKED
+                        else at.sturq.ccdcam.haptics.HapticEvent.ACTION_REJECTED,
+                    )
+                }, ContextCompat.getMainExecutor(this@MainActivity))
             }
             override fun spotAuto() {
                 camera?.cameraControl?.cancelFocusAndMetering()
@@ -236,6 +250,7 @@ class MainActivity : AppCompatActivity() {
             override fun setVideoOsd(quads: List<at.sturq.ccdcam.osd.OsdQuad>?) {
                 videoProcessor.osdQuads = quads
             }
+            override fun haptic(event: at.sturq.ccdcam.haptics.HapticEvent) = haptics.fire(event)
         })
         applyWideLabel()
 
@@ -246,20 +261,36 @@ class MainActivity : AppCompatActivity() {
             hc.ejectOrInsert()   // stand-in for the OPEN/EJECT lever
             true
         }
-        binding.wideSelectBtn.setOnClickListener { toggleWide() }
+        binding.wideSelectBtn.setOnClickListener {
+            if (recording != null) haptics.fire(at.sturq.ccdcam.haptics.HapticEvent.ACTION_REJECTED)
+            else haptics.fire(at.sturq.ccdcam.haptics.HapticEvent.SWITCH_TOGGLE)
+            toggleWide()
+        }
+        studio = at.sturq.ccdcam.studio.StudioPanel(this, binding.studioContainer, studioCallbacks)
+        binding.studioBtn.setOnClickListener {
+            haptics.fire(at.sturq.ccdcam.haptics.HapticEvent.BUTTON_PRESS)
+            if (studio.isOpen) studio.close() else studio.open(studioState)
+        }
         binding.nightShotBtn.setOnClickListener { hc.toggleNightShot() }
         binding.lightBtn.setOnClickListener { hc.toggleLight() }
         binding.flipBtn.setOnClickListener {
             if (recording != null) {
+                haptics.fire(at.sturq.ccdcam.haptics.HapticEvent.ACTION_REJECTED)
                 Toast.makeText(this, "Stop recording before flipping", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            haptics.fire(at.sturq.ccdcam.haptics.HapticEvent.BUTTON_PRESS)
             lensFacing = if (lensFacing == CameraSelector.LENS_FACING_BACK)
                 CameraSelector.LENS_FACING_FRONT else CameraSelector.LENS_FACING_BACK
             bindCamera()
         }
         binding.shutterBtn.setOnClickListener {
-            if (hc.cameraSuspended) return@setOnClickListener   // PLAY/EDIT: START/STOP inactive
+            if (hc.cameraSuspended) {                              // PLAY/EDIT: START/STOP inactive
+                haptics.fire(at.sturq.ccdcam.haptics.HapticEvent.ACTION_REJECTED)
+                return@setOnClickListener
+            }
+            // The key itself; the recording start/stop is felt when it really happens.
+            haptics.fire(at.sturq.ccdcam.haptics.HapticEvent.BUTTON_PRESS)
             when (mode) {
                 Mode.PHOTO -> capturePhoto()
                 Mode.VIDEO -> toggleRecording()
@@ -419,6 +450,7 @@ class MainActivity : AppCompatActivity() {
     private fun capturePhoto() {
         val bmp = binding.previewView.bitmap
         if (bmp == null) {
+            haptics.fire(at.sturq.ccdcam.haptics.HapticEvent.ACTION_REJECTED)
             Toast.makeText(this, "Preview not ready", Toast.LENGTH_SHORT).show()
             return
         }
@@ -432,6 +464,7 @@ class MainActivity : AppCompatActivity() {
             }
             val uri = savePhoto(upright)
             withContext(Dispatchers.Main) {
+                if (uri == null) haptics.fire(at.sturq.ccdcam.haptics.HapticEvent.ACTION_REJECTED)
                 Toast.makeText(
                     this@MainActivity,
                     if (uri != null) "Saved to ${Hc90eController.PICTURES_DIR}" else "Save failed",
@@ -498,6 +531,7 @@ class MainActivity : AppCompatActivity() {
                             cameraDataLog.exposure = it.exposure
                         }
                         cameraDataLog.start(android.os.SystemClock.uptimeMillis())
+                        haptics.fire(at.sturq.ccdcam.haptics.HapticEvent.REC_STARTED)
                         binding.shutterBtn.setBackgroundResource(R.drawable.shutter_video_recording)
                         hc.onRecordingStarted()
                     }
@@ -511,6 +545,10 @@ class MainActivity : AppCompatActivity() {
                         val written = recFile.isFile && recFile.length() > 0
                         if (event.hasError()) Log.w(TAG, "recording finalized with error ${event.error}", event.cause)
                         hc.onRecordingFinished(event.recordingStats.recordedDurationNanos / 1_000_000, saved = written)
+                        haptics.fire(
+                            if (written) at.sturq.ccdcam.haptics.HapticEvent.REC_STOPPED
+                            else at.sturq.ccdcam.haptics.HapticEvent.ACTION_REJECTED,
+                        )
                         if (written) {
                             ioScope.launch {
                                 try { CameraDataStore.save(hc.dataCodeDir(), "$name.mp4", dataCode) }
@@ -596,10 +634,16 @@ class MainActivity : AppCompatActivity() {
      * EXPOSURE and WHITE BAL. from the firmware settings. NightShot lifts exposure to half the
      * positive range (soft-shouldered in the shader) and wins over EXPOSURE while on.
      */
-    private fun applyCameraSettings() {
-        // CCD LOOK / SHARPNESS: both processors render the same tuned look.
-        val look = at.sturq.ccdcam.firmware.LookTweaks.profile(hc.navigator.settings)
+    /** Picture: menu look (CCD LOOK, SHARPNESS) with the STUDIO sliders on top; both processors. */
+    private fun applyLook() {
+        val look = at.sturq.ccdcam.studio.StudioLook.apply(
+            at.sturq.ccdcam.firmware.LookTweaks.profile(hc.navigator.settings), studioState,
+        )
         for (p in listOf(previewProcessor, videoProcessor)) p.profile = look
+    }
+
+    private fun applyCameraSettings() {
+        applyLook()
         val cam = camera ?: return
         val s = hc.navigator.settings
         val sns = s.superNs == FirmwareSettings.SUPER_NS_ON
@@ -617,15 +661,53 @@ class MainActivity : AppCompatActivity() {
                     Math.round(ev / es.exposureCompensationStep.toFloat()).coerceIn(range.lower, range.upper)
                 }
             }
-            cam.cameraControl.setExposureCompensationIndex(index)
+            // STUDIO EXPOSURE shifts whatever the camcorder settings chose
+            val shift = Math.round(studioState.value(at.sturq.ccdcam.studio.StudioSliders.EV) /
+                es.exposureCompensationStep.toFloat())
+            cam.cameraControl.setExposureCompensationIndex((index + shift).coerceIn(range.lower, range.upper))
         }
-        applyWhiteBalance(cam, s.whiteBal)
+        applyCaptureOptions(cam, s.whiteBal)
     }
 
-    /** AUTO / ONE PUSH (AWB locked at the current estimate) / INDOOR / OUTDOOR. */
+    /** Lens minimum focus distance in diopters (0 = fixed focus). */
     @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
-    private fun applyWhiteBalance(cam: Camera, wb: String) {
+    private fun minFocusDiopters(): Float = camera?.let {
+        androidx.camera.camera2.interop.Camera2CameraInfo.from(it.cameraInfo)
+            .getCameraCharacteristic(android.hardware.camera2.CameraCharacteristics.LENS_INFO_MINIMUM_FOCUS_DISTANCE)
+    } ?: 0f
+
+    private val studioCallbacks = object : at.sturq.ccdcam.studio.StudioPanel.Callbacks {
+        override fun onStudioChanged(state: at.sturq.ccdcam.studio.StudioState, picture: Boolean, camera: Boolean) {
+            studioState = state
+            haptics.level = state.haptics
+            if (picture) applyLook()
+            if (camera) applyCameraSettings()
+        }
+        override fun onZoom(linear: Float) {
+            camera?.cameraControl?.setLinearZoom(linear)
+        }
+        override fun onHaptic(event: at.sturq.ccdcam.haptics.HapticEvent) = haptics.fire(event)
+        override fun manualFocusSupported() = minFocusDiopters() > 0f
+        override fun currentLinearZoom() = camera?.cameraInfo?.zoomState?.value?.linearZoom ?: 0f
+        override fun onClosed(state: at.sturq.ccdcam.studio.StudioState) {
+            studioState = state
+            settings.studio = state
+        }
+    }
+
+    /**
+     * Camera2 request options (one set; each call replaces the previous): WHITE BAL. AUTO /
+     * ONE PUSH (AWB locked at the current estimate) / INDOOR / OUTDOOR, and STUDIO manual focus.
+     */
+    @androidx.annotation.OptIn(markerClass = [ExperimentalCamera2Interop::class])
+    private fun applyCaptureOptions(cam: Camera, wb: String) {
         val b = CaptureRequestOptions.Builder()
+        val minFocus = minFocusDiopters()
+        if (studioState.manualFocus && minFocus > 0f) {
+            b.setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF)
+            b.setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE,
+                studioState.value(at.sturq.ccdcam.studio.StudioSliders.FOCUS) * minFocus)
+        }
         val mode = when (wb) {
             FirmwareSettings.WB_INDOOR -> CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT
             FirmwareSettings.WB_OUTDOOR -> CameraMetadata.CONTROL_AWB_MODE_DAYLIGHT
@@ -648,6 +730,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
+        settings.studio = studioState
         if (recording != null) stopRecording()
         hc.onHostPause()
         uiHandler.removeCallbacks(fpsTicker)
@@ -658,6 +741,7 @@ class MainActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         hc.release()
+        haptics.release()
         previewProcessor.release()
         videoProcessor.release()
     }

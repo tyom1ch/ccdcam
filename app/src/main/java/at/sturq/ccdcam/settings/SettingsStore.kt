@@ -32,6 +32,29 @@ class SettingsStore(private val prefs: SharedPreferences) {
             prefs.edit().putString(KEY_ASPECT, value.prefValue).apply()
         }
 
+    /** STUDIO sliders, manual focus and TACTILE FEEDBACK (`studio_*` keys). */
+    var studio: at.sturq.ccdcam.studio.StudioState
+        get() {
+            val values = at.sturq.ccdcam.studio.StudioSliders.ALL.mapNotNull { s ->
+                val k = KEY_STUDIO_PREFIX + s.id
+                if (prefs.contains(k)) s.id to prefs.getFloat(k, s.default) else null
+            }.toMap()
+            val level = prefs.getString(KEY_STUDIO_HAPTICS, null)
+                ?.let { v -> at.sturq.ccdcam.haptics.HapticLevel.entries.firstOrNull { it.name == v } }
+                ?: at.sturq.ccdcam.haptics.HapticLevel.SUBTLE
+            return at.sturq.ccdcam.studio.StudioState(values, prefs.getBoolean(KEY_STUDIO_MANUAL_FOCUS, false), level)
+        }
+        set(v) {
+            val e = prefs.edit()
+            for (s in at.sturq.ccdcam.studio.StudioSliders.ALL) {
+                val k = KEY_STUDIO_PREFIX + s.id
+                if (s.id in v.values) e.putFloat(k, v.value(s)) else e.remove(k)
+            }
+            e.putBoolean(KEY_STUDIO_MANUAL_FOCUS, v.manualFocus)
+                .putString(KEY_STUDIO_HAPTICS, v.haptics.name)
+                .apply()
+        }
+
     /**
      * HC90E firmware settings and the cassette in the camcorder. Stored as strings under
      * `fw_*` keys; anything missing or invalid falls back to the HC90E defaults.
@@ -102,6 +125,9 @@ class SettingsStore(private val prefs: SharedPreferences) {
         }
 
     companion object {
+        const val KEY_STUDIO_PREFIX = "studio_"
+        const val KEY_STUDIO_MANUAL_FOCUS = "studio_manual_focus"
+        const val KEY_STUDIO_HAPTICS = "studio_haptics"
         const val PREFS_NAME = "ccdcam"
         const val KEY_ASPECT = "aspect"
         const val KEY_FW_REC_MODE = "fw_rec_mode"

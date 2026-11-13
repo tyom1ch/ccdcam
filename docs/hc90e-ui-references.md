@@ -95,6 +95,16 @@ you start/stop recording, or operate the touch panel") / OFF · `MENU ROTATE` NO
   ORIG AUDIO, BURN OSD, TAPE NOISE. UI sounds are not mixed into clips: the phone microphone
   records them, like the camcorder mic did.
 
+## STUDIO and tactile feedback (app, not Sony) — Approximation
+- STUDIO is a plain Android panel above the emulator (not styled as the HC90E UI): picture
+  sliders on top of the menu look (×1 = menu setting), NightShot IR SPOT (edge darkening of
+  the camcorder's weak built-in IR light; the real HC90 has an IR light for NightShot — the
+  strength is an approximation), manual FOCUS / EXPOSURE / ZOOM, TACTILE FEEDBACK
+  OFF / SUBTLE / MECHANICAL (not in the Sony menus).
+- Haptics model physical controls (detents, switch clunk, cassette lid) with system
+  primitives / predefined effects / View haptic constants by API level; never a confirmation
+  pulse for a refused action.
+
 ## DATA CODE — HC90 guide p. 28, p. 56
 - Date/time and camera setting data are recorded automatically and are not shown while
   recording; in playback DATA CODE shows OFF / DATE/TIME / CAMERA DATA. Confirmed (HC90).

@@ -197,6 +197,24 @@
 
         </LinearLayout>
 
+        <!-- STUDIO: the app's own controls above the emulator (not part of the Sony UI). -->
+        <TextView
+            android:id="@+id/studioBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|end"
+            android:layout_marginEnd="30dp"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="6dp"
+            android:fontFamily="monospace"
+            android:textStyle="bold"
+            android:textSize="11sp"
+            android:textColor="@color/hud_accent"
+            android:letterSpacing="0.08"
+            android:background="?attr/selectableItemBackground"
+            android:text="STUDIO"
+            tools:ignore="HardcodedText" />
+
         <ImageButton
             android:id="@+id/flipBtn"
             android:layout_width="48dp"
@@ -208,5 +226,16 @@
             android:padding="12dp"
             android:contentDescription="@string/switch_camera" />
     </FrameLayout>
+
+    <!-- STUDIO panel host (filled by StudioPanel), over the camera area. -->
+    <FrameLayout
+        android:id="@+id/studioContainer"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="@id/previewView"
+        app:layout_constraintBottom_toBottomOf="@id/previewView"
+        app:layout_constraintStart_toStartOf="@id/previewView"
+        app:layout_constraintEnd_toEndOf="@id/previewView" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
