@@ -245,15 +245,18 @@ class CcdSurfaceProcessor(
             return
         }
         // Video: keep only the frames on the 25 fps grid, stamped exactly on it (CFR).
-        val pts = if (decimator != null) decimator.accept(st.timestamp) ?: return else st.timestamp
-        frameRateMeter.onFrame(pts)
+        // A tick the camera missed is filled with this frame (no holes in the 25p file).
+        val ticks = decimator?.ticks(st.timestamp) ?: longArrayOf(st.timestamp)
         val frameProfile = profile
         val frameFraming = framing
-        for ((output, entry) in outputs) {
-            if (!EGL14.eglMakeCurrent(eglDisplay, entry.eglSurface, entry.eglSurface, eglContext)) continue
-            drawOnce(entry, output, frameProfile, frameFraming)
-            EGLExt.eglPresentationTimeANDROID(eglDisplay, entry.eglSurface, pts)
-            EGL14.eglSwapBuffers(eglDisplay, entry.eglSurface)
+        for (pts in ticks) {
+            frameRateMeter.onFrame(pts)
+            for ((output, entry) in outputs) {
+                if (!EGL14.eglMakeCurrent(eglDisplay, entry.eglSurface, entry.eglSurface, eglContext)) continue
+                drawOnce(entry, output, frameProfile, frameFraming)
+                EGLExt.eglPresentationTimeANDROID(eglDisplay, entry.eglSurface, pts)
+                EGL14.eglSwapBuffers(eglDisplay, entry.eglSurface)
+            }
         }
     }
 
