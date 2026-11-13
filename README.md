@@ -6,6 +6,8 @@
 
 <p align="center">A 2005 Mini DV camcorder in your Android phone: the picture, the touch-panel firmware, the tape and the sound of a Sony DCR-HC90E (PAL), emulated on top of CameraX.</p>
 
+<img width="898" height="672" alt="photo_2026-11-13_14-01-55" src="https://github.com/user-attachments/assets/755b4610-9d13-4ce2-beae-355a15b8b7c8" />
+
 <p align="center">
   <img src="https://github.com/tyom1ch/ccdcam/actions/workflows/build.yml/badge.svg" alt="build status">
 </p>
