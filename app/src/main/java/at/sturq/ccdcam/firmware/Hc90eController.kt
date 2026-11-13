@@ -113,6 +113,12 @@ class Hc90eController(
         }
     }
 
+    /** Date/time quads to burn into a photo taken at [takenMs], or null (BURN OSD OFF in MEMORY). */
+    fun photoOsdQuads(takenMs: Long): List<OsdQuad>? {
+        if (navigator.settings.tweak(HC90eMenu.PHOTO_OSD) != LookTweaks.ON) return null
+        return OsdLayout.quads(OsdScene.buildPhoto(takenMs, host.videoOsdWidth()), osdRes.first, osdRes.second)
+    }
+
     private val videoOsdTicker = object : Runnable {
         override fun run() {
             refreshVideoOsd()

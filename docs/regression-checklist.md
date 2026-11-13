@@ -219,3 +219,13 @@ LIGHT is the phone torch and is independent of NightShot.
 - [ ] SPOT FOCUS: double tick only when focus locks; failure → refused.
 - [ ] Menu drum ▲▼: detent per row, end stop at the first/last row.
 - [ ] Recording, 25p, sound unchanged with haptics on.
+
+## 20. Photos and STUDIO pro bar (stage 16)
+- [ ] MEMORY photo, portrait and landscape: JPEG has the clip's size and framing (e.g.
+      768×1024 / 1024×768), upright, no black bars; EXIF date set; appears in the gallery whole.
+- [ ] MEMORY → MENU → STANDARD SET → BURN OSD ON: date bottom-left, time bottom-right in the
+      photo, pixel font; OFF: clean. Video BURN OSD (TAPE) is a separate setting.
+- [ ] STUDIO: round controls at the bottom, ruler above them over the viewfinder, live values
+      (f, AF/MF, shutter, ISO) on top; viewfinder stays visible; tap the selected control again
+      to hide the ruler; Reset All; Haptics chip cycles Off / Subtle / Mech.
+- [ ] Focus ruler: left end AF, then ∞ … close (MF); Exposure ±2 EV with a centre detent.

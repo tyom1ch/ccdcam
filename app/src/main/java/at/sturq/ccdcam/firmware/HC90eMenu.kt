@@ -37,6 +37,8 @@ object HC90eMenu {
     const val END_SEARCH = "END SEARCH"
     /** App setting (not on the real camcorder): burn the indicators into the recording. */
     const val BURN_OSD = "BURN OSD"
+    /** MEMORY: date/time burned into photos (shown as BURN OSD there; separate value). */
+    const val PHOTO_OSD = "PHOTO OSD"
     const val EXPOSURE = "EXPOSURE"
     const val WHITE_BAL = "WHITE BAL."
     const val FADER = "FADER"
@@ -60,7 +62,7 @@ object HC90eMenu {
     const val BEEP_VOL = "BEEP VOL"
 
     /** Items whose value lives in FirmwareSettings.tweaks (default = first option). */
-    val TWEAKS: List<String> = listOf(SHARPNESS, SCANLINES, INTERLACE, CCD_NOISE, CCD_SMEAR, FLARE, VIGNETTE, COLOR, BEEP_VOL)
+    val TWEAKS: List<String> = listOf(PHOTO_OSD, SHARPNESS, SCANLINES, INTERLACE, CCD_NOISE, CCD_SMEAR, FLARE, VIGNETTE, COLOR, BEEP_VOL)
 
     /** Items that open their own screen instead of an option list. */
     val ACTION_ITEMS = setOf(END_SEARCH, SPOT_FOCUS, SPOT_METER)
@@ -165,6 +167,10 @@ object HC90eMenu {
                 MenuItem(BEEP_VOL, options = opts(LookTweaks.HIGH, LookTweaks.MID, LookTweaks.LOW), emulated = true),
                 MenuItem("DISP OUTPUT"),
                 MenuItem(
+                    PHOTO_OSD, label = BURN_OSD, options = opts(LookTweaks.OFF, LookTweaks.ON),
+                    lamps = setOf(Lamp.MEMORY), emulated = true,
+                ),
+                MenuItem(
                     BURN_OSD, options = opts(FirmwareSettings.BURN_OSD_OFF, FirmwareSettings.BURN_OSD_ON),
                     lamps = setOf(Lamp.TAPE), emulated = true,
                 ),
@@ -248,6 +254,7 @@ object HC90eMenu {
         REC_MODE, AUDIO_MODE,
         REMAINING, BEEP,
         BURN_OSD, P_MENU_SET_UP,
+        PHOTO_OSD,
         // app shortcuts
         AUDIO_EMU, SCANLINES,
     )

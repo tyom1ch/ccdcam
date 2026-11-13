@@ -1,25 +1,34 @@
 package at.sturq.ccdcam.studio
 
+import android.annotation.SuppressLint
 import android.content.Context
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
+import android.os.Handler
+import android.os.Looper
 import android.view.Gravity
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
-import android.widget.ScrollView
-import android.widget.SeekBar
 import android.widget.TextView
 import at.sturq.ccdcam.haptics.HapticEvent
 import at.sturq.ccdcam.haptics.HapticLevel
 import at.sturq.ccdcam.haptics.SliderDetents
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 
 /**
- * The STUDIO panel: plain Android views above the emulator (deliberately not in the Sony OSD
- * style — it is the app's control room). Sliders give a detent pulse per step, a distinct one
- * at the neutral point and at the ends; dragging between steps stays silent.
+ * STUDIO in the manner of a phone camera's pro mode: a row of round controls at the bottom,
+ * one ruler slider just above them over the viewfinder, and a strip of live capture values at
+ * the top. The viewfinder stays visible; only the selected control shows its ruler.
  */
 class StudioPanel(
     private val context: Context,
@@ -30,9 +39,10 @@ class StudioPanel(
         fun onStudioChanged(state: StudioState, picture: Boolean, camera: Boolean)
         fun onZoom(linear: Float)
         fun onHaptic(event: HapticEvent)
-        /** Lens supports manual focus (minimum focus distance > 0). */
         fun manualFocusSupported(): Boolean
         fun currentLinearZoom(): Float
+        /** One line of live values, e.g. "f/1.7 · AF · 1/100s · ISO 640". */
+        fun liveInfo(): String
         fun onClosed(state: StudioState)
     }
 
@@ -42,173 +52,341 @@ class StudioPanel(
     val isOpen: Boolean get() = host.visibility == View.VISIBLE
 
     private val dp = context.resources.displayMetrics.density
-    private val accent = Color.rgb(0x5B, 0xE5, 0xDC)
-    private val dim = Color.rgb(0x9A, 0x9A, 0x9A)
-    private val sliders = HashMap<String, Pair<SeekBar, TextView>>()
-    private var focusToggle: TextView? = null
-    private val levelViews = HashMap<HapticLevel, TextView>()
+    private val main = Handler(Looper.getMainLooper())
+    private var selected: String? = null
+    private val chips = LinkedHashMap<String, Chip>()
+    private var ruler: RulerView? = null
+    private var info: TextView? = null
+
+    /** A round control: slider ([slider] != null) or action. */
+    private class Chip(val id: String, val label: String, val icon: Icon, val slider: StudioSlider?, val view: ChipView)
+
+    enum class Icon { RESET, EV, FOCUS, ZOOM, VIGNETTE, SCANLINES, NOISE, SMEAR, FLARE, CHROMA, SHARP, SATURATION, CONTRAST, WARMTH, IR, TACTILE }
+
+    private val infoTicker = object : Runnable {
+        override fun run() {
+            info?.text = callbacks.liveInfo()
+            main.postDelayed(this, 400)
+        }
+    }
 
     fun open(initial: StudioState) {
-        state = initial
+        state = initial.with(StudioSliders.ZOOM, callbacks.currentLinearZoom())
         host.removeAllViews()
-        host.addView(build(), FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ((host.parent as View).height * 0.62f).toInt().coerceAtLeast((360 * dp).toInt()),
-            Gravity.BOTTOM,
-        ))
+        build()
         host.visibility = View.VISIBLE
+        main.post(infoTicker)
     }
 
     fun close() {
         if (!isOpen) return
+        main.removeCallbacks(infoTicker)
         host.visibility = View.GONE
         host.removeAllViews()
+        chips.clear(); ruler = null; info = null; selected = null
         callbacks.onClosed(state)
+    }
+
+    // ---- layout ----
+
+    private fun build() {
+        // live values strip (top of the camera area)
+        info = TextView(context).apply {
+            textSize = 12f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.argb(110, 0, 0, 0))
+            setPadding(0, (8 * dp).toInt(), 0, (8 * dp).toInt())
+            text = callbacks.liveInfo()
+        }
+        host.addView(info, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.TOP))
+
+        val bottom = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL }
+        val r = RulerView(context).apply { visibility = View.INVISIBLE }
+        ruler = r
+        bottom.addView(r, LinearLayout.LayoutParams((context.resources.displayMetrics.widthPixels * 0.86f).toInt(), (54 * dp).toInt()).apply {
+            bottomMargin = (10 * dp).toInt()
+        })
+
+        val row = LinearLayout(context).apply { setPadding((8 * dp).toInt(), 0, (8 * dp).toInt(), 0) }
+        fun add(id: String, label: String, icon: Icon, slider: StudioSlider?) {
+            val v = ChipView(context, icon, label)
+            val chip = Chip(id, label, icon, slider, v)
+            v.setOnClickListener { onChip(chip) }
+            chips[id] = chip
+            row.addView(v, LinearLayout.LayoutParams((72 * dp).toInt(), ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        add("reset", "Reset All", Icon.RESET, null)
+        add(StudioSliders.EV.id, "Exposure", Icon.EV, StudioSliders.EV)
+        if (callbacks.manualFocusSupported()) add(StudioSliders.FOCUS.id, "Focus", Icon.FOCUS, StudioSliders.FOCUS)
+        add(StudioSliders.ZOOM.id, "Zoom", Icon.ZOOM, StudioSliders.ZOOM)
+        add(StudioSliders.VIGNETTE.id, "Vignette", Icon.VIGNETTE, StudioSliders.VIGNETTE)
+        add(StudioSliders.IR_SPOT.id, "IR Spot", Icon.IR, StudioSliders.IR_SPOT)
+        add(StudioSliders.SCANLINES.id, "Scanlines", Icon.SCANLINES, StudioSliders.SCANLINES)
+        add(StudioSliders.NOISE.id, "Noise", Icon.NOISE, StudioSliders.NOISE)
+        add(StudioSliders.SMEAR.id, "Smear", Icon.SMEAR, StudioSliders.SMEAR)
+        add(StudioSliders.FLARE.id, "Flare", Icon.FLARE, StudioSliders.FLARE)
+        add(StudioSliders.CHROMA.id, "Chroma", Icon.CHROMA, StudioSliders.CHROMA)
+        add(StudioSliders.SHARPNESS.id, "Sharpness", Icon.SHARP, StudioSliders.SHARPNESS)
+        add(StudioSliders.SATURATION.id, "Saturation", Icon.SATURATION, StudioSliders.SATURATION)
+        add(StudioSliders.CONTRAST.id, "Contrast", Icon.CONTRAST, StudioSliders.CONTRAST)
+        add(StudioSliders.WARMTH.id, "Warmth", Icon.WARMTH, StudioSliders.WARMTH)
+        add("tactile", tactileLabel(), Icon.TACTILE, null)
+
+        val scroll = HorizontalScrollView(context).apply {
+            isHorizontalScrollBarEnabled = false
+            addView(row)
+        }
+        bottom.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            bottomMargin = (6 * dp).toInt()
+        })
+        host.addView(bottom, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.BOTTOM))
+        refreshChips()
+    }
+
+    private fun tactileLabel() = "Haptics " + when (state.haptics) {
+        HapticLevel.OFF -> "Off"
+        HapticLevel.SUBTLE -> "Subtle"
+        HapticLevel.MECHANICAL -> "Mech."
+    }
+
+    private fun onChip(c: Chip) {
+        when (c.id) {
+            "reset" -> {
+                callbacks.onHaptic(HapticEvent.BUTTON_PRESS)
+                state = state.resetAll().copy(haptics = state.haptics)
+                callbacks.onStudioChanged(state, picture = true, camera = true)
+                selected?.let { id -> chips[id]?.slider?.let { ruler?.bind(it) } }
+                refreshChips()
+            }
+            "tactile" -> {
+                val next = HapticLevel.entries[(state.haptics.ordinal + 1) % HapticLevel.entries.size]
+                state = state.copy(haptics = next)
+                callbacks.onStudioChanged(state, picture = false, camera = false)
+                callbacks.onHaptic(HapticEvent.SWITCH_TOGGLE)        // felt at the new level
+                c.view.label = tactileLabel()
+            }
+            else -> {
+                callbacks.onHaptic(HapticEvent.BUTTON_PRESS)
+                if (selected == c.id) {
+                    selected = null
+                    ruler?.visibility = View.INVISIBLE
+                } else {
+                    selected = c.id
+                    ruler?.bind(c.slider!!)
+                    ruler?.visibility = View.VISIBLE
+                }
+                refreshChips()
+            }
+        }
+    }
+
+    private fun refreshChips() {
+        for (c in chips.values) {
+            c.view.selectedChip = c.id == selected
+            // a dot under controls that are not at their neutral value
+            c.view.modified = c.slider?.let { s -> s.id != StudioSliders.ZOOM.id && abs(state.value(s) - s.default) > 1e-3f } ?: false
+            c.view.invalidate()
+        }
+    }
+
+    private fun onValue(s: StudioSlider, v: Float) {
+        state = state.with(s, v)
+        when (s) {
+            StudioSliders.ZOOM -> callbacks.onZoom(v)
+            StudioSliders.EV, StudioSliders.FOCUS -> callbacks.onStudioChanged(state, picture = false, camera = true)
+            else -> callbacks.onStudioChanged(state, picture = true, camera = false)
+        }
+        refreshChips()
     }
 
     // ---- views ----
 
-    private fun text(s: String, size: Float = 12f, color: Int = Color.WHITE, bold: Boolean = false) = TextView(context).apply {
-        text = s
-        textSize = size
-        setTextColor(color)
-        typeface = Typeface.create(Typeface.MONOSPACE, if (bold) Typeface.BOLD else Typeface.NORMAL)
-        letterSpacing = 0.06f
-    }
+    /** Round icon button with a label under it; white when selected (as in pro camera modes). */
+    @SuppressLint("ViewConstructor")
+    private inner class ChipView(ctx: Context, private val icon: Icon, label: String) : View(ctx) {
+        var label: String = label
+            set(value) { field = value; invalidate() }
+        var selectedChip = false
+        var modified = false
+        private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
+        private val line = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND }
+        private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; color = Color.WHITE }
+        private val path = Path()
 
-    private fun button(s: String, onClick: () -> Unit) = text(s, 12f, accent, bold = true).apply {
-        setPadding((10 * dp).toInt(), (8 * dp).toInt(), (10 * dp).toInt(), (8 * dp).toInt())
-        setOnClickListener { callbacks.onHaptic(HapticEvent.BUTTON_PRESS); onClick() }
-    }
-
-    private fun section(parent: LinearLayout, title: String) {
-        parent.addView(text(title, 11f, dim, bold = true).apply {
-            setPadding(0, (14 * dp).toInt(), 0, (2 * dp).toInt())
-        })
-    }
-
-    private fun build(): View {
-        val col = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding((16 * dp).toInt(), (6 * dp).toInt(), (16 * dp).toInt(), (24 * dp).toInt())
+        override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+            setMeasuredDimension(MeasureSpec.getSize(widthMeasureSpec), (86 * dp).toInt())
         }
-        val header = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
-        header.addView(text("STUDIO", 15f, accent, bold = true), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        header.addView(button("RESET") { resetLook() })
-        header.addView(button("CLOSE") { close() })
-        col.addView(header)
 
-        section(col, "PICTURE")
-        StudioSliders.LOOK.forEach { col.addView(slider(it, picture = true)) }
+        override fun onDraw(c: Canvas) {
+            val cx = width / 2f
+            val cy = 30 * dp
+            val r = 26 * dp
+            fill.color = if (selectedChip) Color.WHITE else Color.argb(235, 44, 44, 44)
+            c.drawCircle(cx, cy, r, fill)
+            line.color = if (selectedChip) Color.rgb(30, 30, 30) else Color.WHITE
+            line.strokeWidth = 2.2f * dp
+            drawIcon(c, cx, cy, 11 * dp)
+            if (modified) { fill.color = Color.rgb(0x5B, 0xE5, 0xDC); c.drawCircle(cx + r * 0.72f, cy - r * 0.72f, 3.5f * dp, fill) }
+            text.textSize = 12 * dp
+            c.drawText(label, cx, cy + r + 18 * dp, text)
+        }
 
-        section(col, "NIGHTSHOT")
-        StudioSliders.NIGHTSHOT.forEach { col.addView(slider(it, picture = true)) }
-
-        section(col, "CAMERA")
-        if (callbacks.manualFocusSupported()) {
-            val ft = text("", 12f, accent, bold = true).apply {
-                setPadding(0, (6 * dp).toInt(), 0, (2 * dp).toInt())
-                setOnClickListener {
-                    state = state.copy(manualFocus = !state.manualFocus)
-                    callbacks.onHaptic(HapticEvent.SWITCH_TOGGLE)
-                    refreshFocusToggle()
-                    callbacks.onStudioChanged(state, picture = false, camera = true)
+        private fun drawIcon(c: Canvas, x: Float, y: Float, s: Float) {
+            path.reset()
+            when (icon) {
+                Icon.RESET -> {
+                    c.drawArc(RectF(x - s, y - s, x + s, y + s), 40f, 290f, false, line)
+                    path.moveTo(x + s * 0.95f, y - s * 0.05f); path.lineTo(x + s * 0.6f, y - s * 0.75f); path.lineTo(x + s * 1.15f, y - s * 0.6f)
+                    c.drawPath(path, line)
+                }
+                Icon.EV -> {
+                    c.drawCircle(x, y, s * 0.5f, line)
+                    for (k in 0 until 8) {
+                        val a = Math.PI / 4 * k
+                        c.drawLine(x + (s * 0.8f * cos(a)).toFloat(), y + (s * 0.8f * sin(a)).toFloat(),
+                            x + (s * 1.1f * cos(a)).toFloat(), y + (s * 1.1f * sin(a)).toFloat(), line)
+                    }
+                }
+                Icon.FOCUS -> {
+                    val k = s * 0.45f
+                    for ((sx, sy) in listOf(-1f to -1f, 1f to -1f, -1f to 1f, 1f to 1f)) {
+                        c.drawLine(x + sx * s, y + sy * s, x + sx * (s - k), y + sy * s, line)
+                        c.drawLine(x + sx * s, y + sy * s, x + sx * s, y + sy * (s - k), line)
+                    }
+                }
+                Icon.ZOOM -> {
+                    c.drawCircle(x - s * 0.2f, y - s * 0.2f, s * 0.65f, line)
+                    c.drawLine(x + s * 0.3f, y + s * 0.3f, x + s, y + s, line)
+                }
+                Icon.VIGNETTE -> {
+                    c.drawRoundRect(RectF(x - s, y - s * 0.75f, x + s, y + s * 0.75f), s * 0.2f, s * 0.2f, line)
+                    c.drawOval(RectF(x - s * 0.6f, y - s * 0.42f, x + s * 0.6f, y + s * 0.42f), line)
+                }
+                Icon.SCANLINES -> for (k in -2..2) c.drawLine(x - s, y + k * s * 0.42f, x + s, y + k * s * 0.42f, line)
+                Icon.NOISE -> {
+                    fill.color = line.color
+                    for ((dx, dy) in listOf(-0.7f to -0.6f, 0.2f to -0.8f, 0.8f to -0.2f, -0.3f to 0f, 0.5f to 0.6f, -0.8f to 0.7f, 0.1f to 0.4f))
+                        c.drawCircle(x + dx * s, y + dy * s, s * 0.13f, fill)
+                }
+                Icon.SMEAR -> {
+                    c.drawLine(x, y - s * 1.1f, x, y + s * 1.1f, line)
+                    fill.color = line.color; c.drawCircle(x, y, s * 0.35f, fill)
+                }
+                Icon.FLARE -> {
+                    c.drawLine(x - s * 1.1f, y, x + s * 1.1f, y, line)
+                    c.drawLine(x, y - s * 0.5f, x, y + s * 0.5f, line)
+                    fill.color = line.color; c.drawCircle(x, y, s * 0.22f, fill)
+                }
+                Icon.CHROMA -> {
+                    c.drawCircle(x - s * 0.3f, y, s * 0.6f, line)
+                    c.drawCircle(x + s * 0.3f, y, s * 0.6f, line)
+                }
+                Icon.SHARP -> {
+                    path.moveTo(x, y - s); path.lineTo(x + s, y + s * 0.8f); path.lineTo(x - s, y + s * 0.8f); path.close()
+                    c.drawPath(path, line)
+                }
+                Icon.SATURATION -> {
+                    path.moveTo(x, y - s); path.quadTo(x + s, y + s * 0.1f, x, y + s); path.quadTo(x - s, y + s * 0.1f, x, y - s)
+                    c.drawPath(path, line)
+                }
+                Icon.CONTRAST -> {
+                    c.drawCircle(x, y, s * 0.9f, line)
+                    fill.color = line.color
+                    c.drawArc(RectF(x - s * 0.9f, y - s * 0.9f, x + s * 0.9f, y + s * 0.9f), 90f, 180f, true, fill)
+                }
+                Icon.WARMTH -> {
+                    c.drawRoundRect(RectF(x - s * 0.25f, y - s, x + s * 0.25f, y + s * 0.35f), s * 0.25f, s * 0.25f, line)
+                    c.drawCircle(x, y + s * 0.65f, s * 0.38f, line)
+                    c.drawLine(x + s * 0.6f, y - s * 0.6f, x + s, y - s * 0.6f, line)
+                    c.drawLine(x + s * 0.6f, y - s * 0.2f, x + s, y - s * 0.2f, line)
+                }
+                Icon.IR -> {
+                    // crescent: NightShot light
+                    c.drawArc(RectF(x - s, y - s, x + s, y + s), 60f, 240f, false, line)
+                    c.drawArc(RectF(x - s * 0.2f, y - s * 0.85f, x + s * 1.1f, y + s * 0.85f), 120f, 120f, false, line)
+                }
+                Icon.TACTILE -> {
+                    c.drawRoundRect(RectF(x - s * 0.4f, y - s * 0.8f, x + s * 0.4f, y + s * 0.8f), s * 0.15f, s * 0.15f, line)
+                    for (sx in listOf(-1f, 1f)) {
+                        c.drawLine(x + sx * s * 0.7f, y - s * 0.4f, x + sx * s * 0.7f, y + s * 0.4f, line)
+                        c.drawLine(x + sx * s * 1.05f, y - s * 0.25f, x + sx * s * 1.05f, y + s * 0.25f, line)
+                    }
                 }
             }
-            focusToggle = ft
-            col.addView(ft)
-            col.addView(slider(StudioSliders.FOCUS, camera = true))
-            refreshFocusToggle()
-        } else {
-            col.addView(text("FOCUS: fixed-focus lens", 11f, dim))
         }
-        col.addView(slider(StudioSliders.EV, camera = true))
-        state = state.with(StudioSliders.ZOOM, callbacks.currentLinearZoom())
-        col.addView(slider(StudioSliders.ZOOM, zoom = true))
+    }
 
-        section(col, "TACTILE FEEDBACK")
-        val levels = LinearLayout(context)
-        for (l in HapticLevel.entries) {
-            val v = text(l.name, 12f, dim, bold = true).apply {
-                setPadding(0, (6 * dp).toInt(), (18 * dp).toInt(), (6 * dp).toInt())
-                setOnClickListener {
-                    if (state.haptics == l) return@setOnClickListener
-                    state = state.copy(haptics = l)
-                    refreshLevels()
-                    callbacks.onStudioChanged(state, picture = false, camera = false)
-                    callbacks.onHaptic(HapticEvent.SWITCH_TOGGLE)     // felt at the new level
+    /**
+     * Tick ruler on a dark pill: major ticks at the detents, minor ones between, the neutral
+     * point marked; drag left/right to move the white marker (relative, for precision).
+     */
+    @SuppressLint("ViewConstructor")
+    private inner class RulerView(ctx: Context) : View(ctx) {
+        private var slider: StudioSlider? = null
+        private var detents: SliderDetents? = null
+        private val bg = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(190, 24, 24, 24) }
+        private val tick = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(200, 230, 230, 230); strokeCap = Paint.Cap.ROUND }
+        private val marker = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; strokeCap = Paint.Cap.ROUND }
+        private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; textAlign = Paint.Align.LEFT }
+        private var lastX = 0f
+
+        fun bind(s: StudioSlider) {
+            slider = s
+            detents = SliderDetents(s.min, s.max, s.steps, s.center).also { it.onValue(state.value(s)) }
+            invalidate()
+        }
+
+        private val left get() = 92 * dp
+        private val right get() = width - 18 * dp
+
+        override fun onDraw(c: Canvas) {
+            val s = slider ?: return
+            val h = height.toFloat()
+            c.drawRoundRect(RectF(0f, 0f, width.toFloat(), h), h / 2, h / 2, bg)
+            label.textSize = 13 * dp
+            c.drawText(s.format(state.value(s)), 18 * dp, h / 2 + 5 * dp, label)
+            val minor = 4
+            val n = s.steps * minor
+            tick.strokeWidth = 1.4f * dp
+            for (i in 0..n) {
+                val x = left + (right - left) * i / n
+                val major = i % minor == 0
+                val len = if (major) h * 0.34f else h * 0.18f
+                c.drawLine(x, h / 2 - len / 2, x, h / 2 + len / 2, tick)
+            }
+            s.center?.let { cv ->
+                val x = xOf(s, cv)
+                tick.strokeWidth = 2f * dp
+                c.drawLine(x, h * 0.2f, x, h * 0.8f, tick)
+            }
+            marker.strokeWidth = 4.5f * dp
+            val mx = xOf(s, state.value(s))
+            c.drawLine(mx, h * 0.18f, mx, h * 0.82f, marker)
+        }
+
+        private fun xOf(s: StudioSlider, v: Float) = left + (right - left) * (v - s.min) / (s.max - s.min)
+
+        @SuppressLint("ClickableViewAccessibility")
+        override fun onTouchEvent(e: MotionEvent): Boolean {
+            val s = slider ?: return false
+            when (e.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { lastX = e.x; parent?.requestDisallowInterceptTouchEvent(true) }
+                MotionEvent.ACTION_MOVE -> {
+                    val dv = (e.x - lastX) / (right - left) * (s.max - s.min)
+                    lastX = e.x
+                    var v = (state.value(s) + dv).coerceIn(s.min, s.max)
+                    // gentle snap to the neutral point so it can be found by finger
+                    s.center?.let { cv -> if (abs(v - cv) < (s.max - s.min) * 0.012f) v = cv }
+                    if (v != state.value(s)) {
+                        onValue(s, v)
+                        detents?.onValue(v)?.let(callbacks::onHaptic)
+                        invalidate()
+                    }
                 }
             }
-            levelViews[l] = v
-            levels.addView(v)
-        }
-        col.addView(levels)
-        refreshLevels()
-
-        return ScrollView(context).apply {
-            background = GradientDrawable().apply {
-                setColor(Color.argb(235, 14, 14, 14))
-                cornerRadii = floatArrayOf(18 * dp, 18 * dp, 18 * dp, 18 * dp, 0f, 0f, 0f, 0f)
-            }
-            isClickable = true                                   // touches stay in the panel
-            addView(col)
-        }
-    }
-
-    private fun slider(s: StudioSlider, picture: Boolean = false, camera: Boolean = false, zoom: Boolean = false): View {
-        val row = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        val top = LinearLayout(context)
-        top.addView(text(s.label, 11f), LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        val value = text(s.format(state.value(s)), 11f, accent)
-        top.addView(value)
-        row.addView(top)
-        val detents = SliderDetents(s.min, s.max, s.steps, s.center)
-        val bar = SeekBar(context).apply {
-            max = RES
-            progress = toProgress(s, state.value(s))
-            detents.onValue(state.value(s))                     // start position: no pulse
-            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-                override fun onProgressChanged(sb: SeekBar, p: Int, fromUser: Boolean) {
-                    if (!fromUser) return
-                    val v = fromProgress(s, p)
-                    state = state.with(s, v)
-                    value.text = s.format(v)
-                    detents.onValue(v)?.let(callbacks::onHaptic)
-                    if (zoom) callbacks.onZoom(v) else callbacks.onStudioChanged(state, picture, camera)
-                }
-                override fun onStartTrackingTouch(sb: SeekBar) = Unit
-                override fun onStopTrackingTouch(sb: SeekBar) = Unit
-            })
-        }
-        row.addView(bar)
-        sliders[s.id] = bar to value
-        return row
-    }
-
-    private fun refreshFocusToggle() {
-        focusToggle?.text = if (state.manualFocus) "FOCUS: MANUAL" else "FOCUS: AUTO"
-        sliders[StudioSliders.FOCUS.id]?.first?.isEnabled = state.manualFocus
-    }
-
-    private fun refreshLevels() {
-        for ((l, v) in levelViews) v.setTextColor(if (l == state.haptics) accent else dim)
-    }
-
-    private fun resetLook() {
-        state = state.resetLook()
-        for (s in StudioSliders.LOOK + StudioSliders.NIGHTSHOT) {
-            sliders[s.id]?.let { (bar, value) -> bar.progress = toProgress(s, s.default); value.text = s.format(s.default) }
-        }
-        callbacks.onStudioChanged(state, picture = true, camera = false)
-    }
-
-    private companion object {
-        const val RES = 1000
-        fun toProgress(s: StudioSlider, v: Float) = Math.round((v - s.min) / (s.max - s.min) * RES)
-        fun fromProgress(s: StudioSlider, p: Int): Float {
-            val v = s.min + (s.max - s.min) * p / RES
-            // snap gently to the neutral point so "×1.00" is reachable by finger
-            val c = s.center ?: return v
-            return if (kotlin.math.abs(v - c) < (s.max - s.min) * 0.015f) c else v
+            return true
         }
     }
 }

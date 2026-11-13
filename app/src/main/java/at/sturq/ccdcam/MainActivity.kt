@@ -111,6 +111,9 @@ class MainActivity : AppCompatActivity() {
     private var studioState = at.sturq.ccdcam.studio.StudioState()
 
     private val cameraDataLog = CameraDataLog()
+    @Volatile private var liveExposureNs = 0L
+    @Volatile private var liveIso = 0
+    @Volatile private var liveAperture = 0f
     private val captureDataCallback = object : android.hardware.camera2.CameraCaptureSession.CaptureCallback() {
         override fun onCaptureCompleted(
             session: android.hardware.camera2.CameraCaptureSession,
@@ -121,6 +124,7 @@ class MainActivity : AppCompatActivity() {
             val iso = result.get(android.hardware.camera2.CaptureResult.SENSOR_SENSITIVITY) ?: return
             val ap = result.get(android.hardware.camera2.CaptureResult.LENS_APERTURE) ?: CameraDataFormat.MIN_F
             cameraDataLog.onFrame(android.os.SystemClock.uptimeMillis(), exp, iso, ap)
+            liveExposureNs = exp; liveIso = iso; liveAperture = ap
         }
     }
 
@@ -447,50 +451,88 @@ class MainActivity : AppCompatActivity() {
         videoProcessor.osdLcdWidth = videoOsdWidthFor(wide)
     }
 
+    /**
+     * MEMORY: the photo is the next frame of the video stream — the same size, framing, look
+     * and orientation a clip gets (no LCD band, no letterbox), with the date/time burned in when
+     * BURN OSD is ON in MEMORY.
+     */
     private fun capturePhoto() {
-        val bmp = binding.previewView.bitmap
-        if (bmp == null) {
+        val cam = camera
+        if (cam == null) {
             haptics.fire(at.sturq.ccdcam.haptics.HapticEvent.ACTION_REJECTED)
-            Toast.makeText(this, "Preview not ready", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Camera not ready", Toast.LENGTH_SHORT).show()
             return
         }
         binding.shutterBtn.isEnabled = false
-        val rot = photoRotationCw
-        ioScope.launch {
-            // Rotate to physical orientation so floor ends up at the bottom of the file.
-            val upright = if (rot == 0) bmp else {
-                val m = android.graphics.Matrix().apply { postRotate(rot.toFloat()) }
-                Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, m, true)
-            }
-            val uri = savePhoto(upright)
-            withContext(Dispatchers.Main) {
-                if (uri == null) haptics.fire(at.sturq.ccdcam.haptics.HapticEvent.ACTION_REJECTED)
-                Toast.makeText(
-                    this@MainActivity,
-                    if (uri != null) "Saved to ${Hc90eController.PICTURES_DIR}" else "Save failed",
-                    Toast.LENGTH_SHORT,
-                ).show()
-                binding.shutterBtn.isEnabled = true
+        val cw = EffectGeometry.uprightCwDegrees(
+            cam.cameraInfo.getSensorRotationDegrees(lastSurfaceRotation),
+            videoProcessor.outputRotationCw, mirrored = false,
+        )
+        val takenMs = System.currentTimeMillis()
+        videoProcessor.requestStill(hc.photoOsdQuads(takenMs), videoOsdWidthFor(wide)) { frame ->
+            ioScope.launch {
+                val uri = try {
+                    frame?.let { savePhoto(stillToBitmap(it, cw), takenMs) }
+                } catch (t: Throwable) {
+                    Log.w(TAG, "photo failed", t)
+                    null
+                }
+                withContext(Dispatchers.Main) {
+                    if (uri == null) haptics.fire(at.sturq.ccdcam.haptics.HapticEvent.ACTION_REJECTED)
+                    Toast.makeText(
+                        applicationContext,
+                        if (uri != null) "Saved to ${Hc90eController.PICTURES_DIR}" else "Save failed",
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                    binding.shutterBtn.isEnabled = true
+                }
             }
         }
     }
 
-    private fun savePhoto(bmp: Bitmap): android.net.Uri? {
-        val name = "ccdcam_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
-            .format(System.currentTimeMillis())
+    /** GL pixels (bottom row first) → upright bitmap, turned like the clip would be. */
+    private fun stillToBitmap(f: CcdSurfaceProcessor.StillFrame, cw: Int): Bitmap {
+        val raw = Bitmap.createBitmap(f.width, f.height, Bitmap.Config.ARGB_8888)
+        raw.copyPixelsFromBuffer(f.rgba)
+        val m = android.graphics.Matrix().apply {
+            postScale(1f, -1f)
+            if (cw != 0) postRotate(cw.toFloat())
+        }
+        return Bitmap.createBitmap(raw, 0, 0, f.width, f.height, m, true).also { if (it !== raw) raw.recycle() }
+    }
+
+    private fun savePhoto(bmp: Bitmap, takenMs: Long): android.net.Uri? {
+        val name = "ccdcam_" + SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(takenMs)
+        val q = android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q
         val cv = ContentValues().apply {
             put(MediaStore.MediaColumns.DISPLAY_NAME, "$name.jpg")
             put(MediaStore.MediaColumns.MIME_TYPE, "image/jpeg")
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            put(MediaStore.Images.Media.DATE_TAKEN, takenMs)
+            if (q) {
                 put(MediaStore.Images.Media.RELATIVE_PATH, Hc90eController.PICTURES_DIR)
+                put(MediaStore.MediaColumns.IS_PENDING, 1)
             }
         }
-        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv)
-            ?: return null
-        contentResolver.openOutputStream(uri)?.use { os ->
-            bmp.compress(Bitmap.CompressFormat.JPEG, 92, os)
-        } ?: return null
-        return uri
+        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, cv) ?: return null
+        try {
+            contentResolver.openOutputStream(uri)!!.use { os -> bmp.compress(Bitmap.CompressFormat.JPEG, 95, os) }
+            runCatching {
+                contentResolver.openFileDescriptor(uri, "rw")?.use { pfd ->
+                    val exif = androidx.exifinterface.media.ExifInterface(pfd.fileDescriptor)
+                    val t = SimpleDateFormat("yyyy:MM:dd HH:mm:ss", Locale.US).format(takenMs)
+                    exif.setAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME_ORIGINAL, t)
+                    exif.setAttribute(androidx.exifinterface.media.ExifInterface.TAG_DATETIME, t)
+                    exif.saveAttributes()
+                }
+            }
+            if (q) contentResolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+            bmp.recycle()
+            return uri
+        } catch (t: Throwable) {
+            Log.w(TAG, "photo save failed", t)
+            runCatching { contentResolver.delete(uri, null, null) }
+            return null
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -689,6 +731,14 @@ class MainActivity : AppCompatActivity() {
         override fun onHaptic(event: at.sturq.ccdcam.haptics.HapticEvent) = haptics.fire(event)
         override fun manualFocusSupported() = minFocusDiopters() > 0f
         override fun currentLinearZoom() = camera?.cameraInfo?.zoomState?.value?.linearZoom ?: 0f
+        override fun liveInfo(): String {
+            val parts = ArrayList<String>()
+            if (liveAperture > 0f) parts += "f/%.2f".format(Locale.US, liveAperture)
+            parts += if (studioState.manualFocusActive) "Manual Focus" else "Auto Focus"
+            if (liveExposureNs > 0) parts += "1/${Math.round(1e9 / liveExposureNs)}s"
+            if (liveIso > 0) parts += "ISO $liveIso"
+            return parts.joinToString("     ")
+        }
         override fun onClosed(state: at.sturq.ccdcam.studio.StudioState) {
             studioState = state
             settings.studio = state
@@ -703,10 +753,9 @@ class MainActivity : AppCompatActivity() {
     private fun applyCaptureOptions(cam: Camera, wb: String) {
         val b = CaptureRequestOptions.Builder()
         val minFocus = minFocusDiopters()
-        if (studioState.manualFocus && minFocus > 0f) {
+        if (studioState.manualFocusActive && minFocus > 0f) {
             b.setCaptureRequestOption(CaptureRequest.CONTROL_AF_MODE, CameraMetadata.CONTROL_AF_MODE_OFF)
-            b.setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE,
-                studioState.value(at.sturq.ccdcam.studio.StudioSliders.FOCUS) * minFocus)
+            b.setCaptureRequestOption(CaptureRequest.LENS_FOCUS_DISTANCE, studioState.focusFraction * minFocus)
         }
         val mode = when (wb) {
             FirmwareSettings.WB_INDOOR -> CameraMetadata.CONTROL_AWB_MODE_INCANDESCENT

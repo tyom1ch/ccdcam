@@ -180,5 +180,17 @@ object OsdScene {
         return out
     }
 
+    /**
+     * Photo imprint (BURN OSD in MEMORY): only the date and the time, where the camcorder shows
+     * them, in the same pixel font.
+     */
+    fun buildPhoto(dateMs: Long, lcdW: Float = LCD_W): List<OsdItem> {
+        val (date, time) = OsdClock.format(dateMs)
+        return listOf(
+            OsdItem.Text(date, 0.050f * lcdW, DATE_ROW, OsdItem.Align.LEFT, WHITE),
+            OsdItem.Text(time, 0.950f * lcdW, DATE_ROW, OsdItem.Align.RIGHT, WHITE),
+        )
+    }
+
     private fun argb(a: Int, r: Int, g: Int, b: Int) = (a shl 24) or (r shl 16) or (g shl 8) or b
 }

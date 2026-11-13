@@ -57,4 +57,26 @@ class StudioTest {
         }
         assertEquals(StudioSliders.ALL.size, StudioSliders.ALL.map { it.id }.toSet().size)
     }
+
+    @Test
+    fun focusSliderStartsWithAutofocus() {
+        val st = StudioState()
+        assertTrue(!st.manualFocusActive)
+        assertEquals("AF", StudioSliders.FOCUS.format(0f))
+        val inf = st.with(StudioSliders.FOCUS, StudioSliders.FOCUS_AF_MAX + 0.01f)
+        assertTrue(inf.manualFocusActive)
+        assertEquals("∞", StudioSliders.FOCUS.format(StudioSliders.FOCUS_AF_MAX + 0.01f))
+        assertEquals(1f, st.with(StudioSliders.FOCUS, 1f).focusFraction, 1e-6f)
+    }
+
+    @Test
+    fun resetAllClearsEverythingButTactile() {
+        val st = StudioState(haptics = at.sturq.ccdcam.haptics.HapticLevel.OFF)
+            .with(StudioSliders.EV, 1f).with(StudioSliders.FOCUS, 0.5f).with(StudioSliders.VIGNETTE, 2f)
+        val r = st.resetAll()
+        assertEquals(0f, r.value(StudioSliders.EV))
+        assertTrue(!r.manualFocusActive)
+        assertEquals(1f, r.value(StudioSliders.VIGNETTE))
+        assertEquals(at.sturq.ccdcam.haptics.HapticLevel.OFF, r.haptics)
+    }
 }

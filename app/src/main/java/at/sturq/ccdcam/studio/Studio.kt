@@ -23,6 +23,9 @@ data class StudioSlider(
 )
 
 object StudioSliders {
+    /** FOCUS values up to this are autofocus. */
+    const val FOCUS_AF_MAX = 0.04f
+
     private fun pct(v: Float) = "${Math.round(v * 100)}%"
 
     // Picture (multipliers on the menu look; 1 = unchanged)
@@ -43,8 +46,14 @@ object StudioSliders {
     val IR_SPOT = StudioSlider("ir_spot", "IR SPOT", 0f, 1f, 0.7f, 10, format = ::pct)
 
     // Camera (manual)
-    /** 0 = infinity … 1 = closest focus (diopters scaled by the lens minimum). */
-    val FOCUS = StudioSlider("focus", "FOCUS", 0f, 1f, 0f, 10) { v -> if (v <= 0.001f) "∞" else pct(v) }
+    /** Left end = AF; then manual from infinity to the closest focus. */
+    val FOCUS = StudioSlider("focus", "FOCUS", 0f, 1f, 0f, 10) { v ->
+        when {
+            v <= FOCUS_AF_MAX -> "AF"
+            v <= FOCUS_AF_MAX + 0.03f -> "∞"
+            else -> "MF " + pct((v - FOCUS_AF_MAX) / (1f - FOCUS_AF_MAX))
+        }
+    }
     /** Exposure shift in EV, added to EXPOSURE / NightShot. */
     val EV = StudioSlider("ev", "EXPOSURE", -2f, 2f, 0f, 12, 0f) { v -> "%+.1f EV".format(java.util.Locale.US, v) }
     /** Linear zoom 0..1 of the lens range. */
@@ -65,6 +74,16 @@ data class StudioState(
     val manualFocus: Boolean = false,
     val haptics: HapticLevel = HapticLevel.SUBTLE,
 ) {
+    /** FOCUS slider past its AF end: manual focus. */
+    val manualFocusActive: Boolean get() = value(StudioSliders.FOCUS) > StudioSliders.FOCUS_AF_MAX
+
+    /** Manual focus position 0 (infinity) … 1 (closest). */
+    val focusFraction: Float
+        get() = ((value(StudioSliders.FOCUS) - StudioSliders.FOCUS_AF_MAX) / (1f - StudioSliders.FOCUS_AF_MAX)).coerceIn(0f, 1f)
+
+    /** RESET ALL: look, exposure, focus back to auto (tactile level kept). */
+    fun resetAll() = copy(values = emptyMap(), manualFocus = false)
+
     fun value(s: StudioSlider): Float = (values[s.id] ?: s.default).coerceIn(s.min, s.max)
     fun with(s: StudioSlider, v: Float) = copy(values = values + (s.id to v.coerceIn(s.min, s.max)))
 

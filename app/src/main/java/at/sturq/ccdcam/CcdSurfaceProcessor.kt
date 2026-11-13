@@ -64,6 +64,27 @@ class CcdSurfaceProcessor(
     /** Burned-in OSD quads (LCD units), or null for none. Replaced, never mutated. */
     @Volatile var osdQuads: List<OsdQuad>? = null
 
+    /** A still: the next output frame read back, [quads] (e.g. the photo date) drawn on top. */
+    private class StillRequest(val quads: List<OsdQuad>?, val lcdWidth: Float, val done: (StillFrame?) -> Unit)
+
+    /** RGBA pixels of one output frame, bottom row first (as glReadPixels returns them). */
+    class StillFrame(val width: Int, val height: Int, val rgba: java.nio.ByteBuffer)
+
+    private val stillRequest = java.util.concurrent.atomic.AtomicReference<StillRequest?>(null)
+
+    /**
+     * Photo from this stream (the video instance: the exact frame a clip would get — same size,
+     * framing and look, no LCD band). [done] runs on the GL thread with the pixels, or null if
+     * there is no output.
+     */
+    fun requestStill(quads: List<OsdQuad>?, lcdWidth: Float, done: (StillFrame?) -> Unit) {
+        stillRequest.getAndSet(StillRequest(quads, lcdWidth, done))?.done?.invoke(null)
+        handler.postDelayed({
+            // no frame within 1.5 s (camera off / no output): give up
+            stillRequest.getAndSet(null)?.done?.invoke(null)
+        }, 1_500)
+    }
+
     /** Width in LCD units the OSD quads were laid out for (1024 = 16:9, 768 = 4:3). */
     @Volatile var osdLcdWidth: Float = at.sturq.ccdcam.osd.OsdScene.LCD_W
     private val handler = Handler(thread.looper)
@@ -254,6 +275,7 @@ class CcdSurfaceProcessor(
             for ((output, entry) in outputs) {
                 if (!EGL14.eglMakeCurrent(eglDisplay, entry.eglSurface, entry.eglSurface, eglContext)) continue
                 drawOnce(entry, output, frameProfile, frameFraming)
+                stillRequest.getAndSet(null)?.let { readStill(entry, it) }
                 EGLExt.eglPresentationTimeANDROID(eglDisplay, entry.eglSurface, pts)
                 EGL14.eglSwapBuffers(eglDisplay, entry.eglSurface)
             }
@@ -261,6 +283,23 @@ class CcdSurfaceProcessor(
     }
 
     private val combined = FloatArray(16)
+
+    /** Reads the back buffer just drawn (before the swap), with the still's own overlay. */
+    private fun readStill(entry: OutputEntry, req: StillRequest) {
+        try {
+            val lcd = entry.lcdToBuffer
+            val q = req.quads
+            if (osd != null && q != null && lcd != null) osd.draw(q, lcd, req.lcdWidth)
+            val buf = java.nio.ByteBuffer.allocateDirect(entry.width * entry.height * 4)
+                .order(java.nio.ByteOrder.nativeOrder())
+            GLES20.glReadPixels(0, 0, entry.width, entry.height, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buf)
+            buf.rewind()
+            req.done(StillFrame(entry.width, entry.height, buf))
+        } catch (t: Throwable) {
+            Log.w(TAG, "still readback failed", t)
+            req.done(null)
+        }
+    }
 
     private fun drawOnce(entry: OutputEntry, output: SurfaceOutput, look: CameraProfile, fr: Framing) {
         val w = entry.width

@@ -29,7 +29,12 @@ class HC90eMenuTest {
         assertTrue(LookTweaks.beepVolume(t) < 0.5f)
         assertEquals(LookTweaks.OFF, t.valueOf(HC90eMenu.SCANLINES))
         assertEquals(LookTweaks.STD, t.valueOf(HC90eMenu.SHARPNESS))
-        for (id in HC90eMenu.TWEAKS) assertTrue(id, HC90eMenu.item(id).isAvailable(Lamp.TAPE))
+        for (id in HC90eMenu.TWEAKS) {
+            val it = HC90eMenu.item(id)
+            assertTrue(id, it.isAvailable(Lamp.TAPE) || it.isAvailable(Lamp.MEMORY))
+        }
+        // BURN OSD is offered in MEMORY too (photo date/time)
+        assertTrue(HC90eMenu.categoriesFor(Lamp.MEMORY).any { c -> c.items.any { it.id == HC90eMenu.PHOTO_OSD && it.label == HC90eMenu.BURN_OSD } })
     }
 
     @Test
