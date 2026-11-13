@@ -291,6 +291,10 @@ class Hc90eController(
 
     fun tapeLoopPcm(): FloatArray = beeps.tapeLoop()
 
+    /** Mechanism loop while a clip is processed and saved (pairs with [processingFinished]). */
+    fun processingStarted() = beeps.processingStarted()
+    fun processingFinished() = beeps.processingFinished()
+
     override fun onBeep(beep: Beep) = playBeep(beep)
 
     override fun onHaptic(event: at.sturq.ccdcam.haptics.HapticEvent) = host.haptic(event)

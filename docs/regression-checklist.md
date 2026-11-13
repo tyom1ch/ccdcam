@@ -229,3 +229,6 @@ LIGHT is the phone torch and is independent of NightShot.
       (f, AF/MF, shutter, ISO) on top; viewfinder stays visible; tap the selected control again
       to hide the ruler; Reset All; Haptics chip cycles Off / Subtle / Mech.
 - [ ] Focus ruler: left end AF, then ∞ … close (MF); Exposure ±2 EV with a centre detent.
+- [ ] After STOP: the mechanism loop (res/raw/process_loop, the full sample) plays gaplessly
+      while the clip is processed and saved, and ends at the end of a pass (no cut mid-sound);
+      a second clip finishing meanwhile keeps one continuous loop; BEEP VOL applies.

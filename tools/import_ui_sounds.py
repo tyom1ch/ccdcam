@@ -8,6 +8,8 @@ Imports the project's own UI sound renders into app/src/main/res/raw as PCM 16-b
   3 ms fade in/out (no clicks).
 - Tape loop: mono, seamless loop (30 ms crossfade of the tail into the head), RMS-normalised
   to -30 dBFS (peak limited to -1 dBFS); the mix level is applied in the app (SfxMixer).
+- process_loop.wav (saving loop) is not made here: the whole 44.1 kHz source sample, mono,
+  FFT-resampled to 48 kHz (circular, so the seam stays seamless), peak -6 dBFS, no trimming.
 """
 import math
 import struct

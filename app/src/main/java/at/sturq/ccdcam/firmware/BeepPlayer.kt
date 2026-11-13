@@ -56,15 +56,72 @@ class BeepPlayer(context: Context) {
     /** Seamless tape-mechanism loop at [RATE] (res/raw/tape_loop). */
     fun tapeLoop(): FloatArray = loop ?: load(R.raw.tape_loop).also { loop = it }
 
+    /**
+     * Mechanism loop while clips are processed and saved (res/raw/process_loop): the whole
+     * sample, looped gaplessly by the track itself; it stops at the end of a pass, never mid-way.
+     */
+    private var procTrack: AudioTrack? = null
+    private var procFrames = 0
+    private var procUsers = 0
+    private var procStartedAt = 0L
+    private var procStop: ScheduledFuture<*>? = null
+
+    /** A clip started processing (calls nest; the loop runs until the last one is done). */
+    fun processingStarted() {
+        runSafe {
+            procUsers++
+            procStop?.cancel(false)
+            procStop = null
+            try {
+                val t = procTrack ?: load(R.raw.process_loop).let { x ->
+                    procFrames = x.size
+                    staticTrack(x).also { procTrack = it }
+                }
+                if (t.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                    t.stop()
+                    t.reloadStaticData()
+                    t.setLoopPoints(0, procFrames, -1)
+                    t.setVolume(volume * PROCESS_GAIN)
+                    t.play()
+                    procStartedAt = android.os.SystemClock.uptimeMillis()
+                }
+            } catch (e: Throwable) {
+                Log.w("BeepPlayer", "processing loop failed", e)
+            }
+        }
+    }
+
+    /** A clip finished processing: the loop plays its current pass out, then stops. */
+    fun processingFinished() {
+        runSafe {
+            procUsers = maxOf(0, procUsers - 1)
+            val t = procTrack
+            if (procUsers > 0 || t == null || t.playState != AudioTrack.PLAYSTATE_PLAYING) return@runSafe
+            val passMs = procFrames * 1000L / RATE
+            val left = passMs - (android.os.SystemClock.uptimeMillis() - procStartedAt) % passMs
+            procStop?.cancel(false)
+            procStop = executor.schedule({
+                procStop = null
+                if (procUsers == 0) cut(t)
+            }, left, TimeUnit.MILLISECONDS)
+        }
+    }
+
+    /** Runs on the sound thread; a clip may finish after [release] (then nothing to play). */
+    private fun runSafe(block: () -> Unit) {
+        try { executor.execute(block) } catch (_: java.util.concurrent.RejectedExecutionException) {}
+    }
+
     /** One prepared static track per sound (built on first use, reused afterwards). */
     private val tracks = HashMap<Beep, AudioTrack>()
     /** Sounding track per voice: UI keys/REC/warnings, and the mechanism (cassette, power). */
     private val playing = HashMap<Boolean, AudioTrack>()
 
-    private fun track(beep: Beep): AudioTrack = tracks.getOrPut(beep) {
-        val f = pcm(beep)
+    private fun track(beep: Beep): AudioTrack = tracks.getOrPut(beep) { staticTrack(pcm(beep)) }
+
+    private fun staticTrack(f: FloatArray): AudioTrack {
         val pcm = ShortArray(f.size) { (f[it] * 32767f).roundToInt().coerceIn(-32768, 32767).toShort() }
-        AudioTrack.Builder()
+        return AudioTrack.Builder()
             .setAudioAttributes(
                 AudioAttributes.Builder()
                     .setUsage(AudioAttributes.USAGE_MEDIA)
@@ -139,6 +196,9 @@ class BeepPlayer(context: Context) {
             tracks.values.forEach { runCatching { it.release() } }
             tracks.clear()
             playing.clear()
+            procStop?.cancel(false)
+            procTrack?.let { runCatching { it.release() } }
+            procTrack = null
         }
         executor.shutdown()
     }
@@ -147,5 +207,7 @@ class BeepPlayer(context: Context) {
         const val RATE = 48_000
         /** Shortest time a sound plays before the next one may cut it. */
         const val MIN_SOUND_MS = 40L
+        /** Processing loop level (stored at -6 dBFS peak) under BEEP VOL. */
+        const val PROCESS_GAIN = 0.7f
     }
 }

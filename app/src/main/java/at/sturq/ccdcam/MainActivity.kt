@@ -640,6 +640,7 @@ class MainActivity : AppCompatActivity() {
         ioScope.launch {
             val processed = ClipStore.processedFile(this@MainActivity, name)
             var published = false
+            hc.processingStarted()
             try {
                 if (!ClipStore.isPlayable(file)) {
                     Log.w(TAG, "clip $name not playable, dropped")
@@ -669,6 +670,7 @@ class MainActivity : AppCompatActivity() {
                 processed.delete()
                 if (published) file.delete()     // otherwise kept: published on next start
                 ClipStore.done(name)
+                hc.processingFinished()
             }
             withContext(Dispatchers.Main) {
                 val msg = if (published) "Saved to $dir" else "Save error: kept for retry"
