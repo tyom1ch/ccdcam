@@ -64,21 +64,27 @@ class CcdSurfaceProcessor(
     /** Burned-in OSD quads (LCD units), or null for none. Replaced, never mutated. */
     @Volatile var osdQuads: List<OsdQuad>? = null
 
-    /** A still: the next output frame read back, [quads] (e.g. the photo date) drawn on top. */
-    private class StillRequest(val quads: List<OsdQuad>?, val lcdWidth: Float, val done: (StillFrame?) -> Unit)
+    /** A still: the next output frame read back. */
+    private class StillRequest(val done: (StillFrame?) -> Unit)
 
-    /** RGBA pixels of one output frame, bottom row first (as glReadPixels returns them). */
-    class StillFrame(val width: Int, val height: Int, val rgba: java.nio.ByteBuffer)
+    /**
+     * RGBA pixels of one output frame, bottom row first (as glReadPixels returns them), and the
+     * picture's rectangle in them (GL pixel coordinates, origin bottom-left).
+     */
+    class StillFrame(
+        val width: Int, val height: Int, val rgba: java.nio.ByteBuffer,
+        val left: Float, val bottom: Float, val right: Float, val top: Float,
+    )
 
     private val stillRequest = java.util.concurrent.atomic.AtomicReference<StillRequest?>(null)
 
     /**
-     * Photo from this stream (the video instance: the exact frame a clip would get — same size,
-     * framing and look, no LCD band). [done] runs on the GL thread with the pixels, or null if
-     * there is no output.
+     * Photo from this stream (the preview instance, which always runs: the picture exactly as it
+     * is shown, cropped to the picture rectangle by the caller). [done] runs on the GL thread
+     * with the pixels, or null if no frame comes.
      */
-    fun requestStill(quads: List<OsdQuad>?, lcdWidth: Float, done: (StillFrame?) -> Unit) {
-        stillRequest.getAndSet(StillRequest(quads, lcdWidth, done))?.done?.invoke(null)
+    fun requestStill(done: (StillFrame?) -> Unit) {
+        stillRequest.getAndSet(StillRequest(done))?.done?.invoke(null)
         handler.postDelayed({
             // no frame within 1.5 s (camera off / no output): give up
             stillRequest.getAndSet(null)?.done?.invoke(null)
@@ -284,17 +290,27 @@ class CcdSurfaceProcessor(
 
     private val combined = FloatArray(16)
 
-    /** Reads the back buffer just drawn (before the swap), with the still's own overlay. */
+    /** Reads the back buffer just drawn (before the swap) and where the picture lies in it. */
     private fun readStill(entry: OutputEntry, req: StillRequest) {
         try {
-            val lcd = entry.lcdToBuffer
-            val q = req.quads
-            if (osd != null && q != null && lcd != null) osd.draw(q, lcd, req.lcdWidth)
+            val m = entry.effectToBuffer ?: return req.done(null)
+            // picture uv corners -> buffer uv (GL mat3, column-major: x' = m0 x + m3 y + m6)
+            val xs = FloatArray(4)
+            val ys = FloatArray(4)
+            for ((i, c) in listOf(0f to 0f, 1f to 0f, 0f to 1f, 1f to 1f).withIndex()) {
+                xs[i] = (m[0] * c.first + m[3] * c.second + m[6]) * entry.width
+                ys[i] = (m[1] * c.first + m[4] * c.second + m[7]) * entry.height
+            }
             val buf = java.nio.ByteBuffer.allocateDirect(entry.width * entry.height * 4)
                 .order(java.nio.ByteOrder.nativeOrder())
             GLES20.glReadPixels(0, 0, entry.width, entry.height, GLES20.GL_RGBA, GLES20.GL_UNSIGNED_BYTE, buf)
             buf.rewind()
-            req.done(StillFrame(entry.width, entry.height, buf))
+            val w = entry.width.toFloat()
+            val h = entry.height.toFloat()
+            req.done(StillFrame(
+                entry.width, entry.height, buf,
+                xs.min().coerceIn(0f, w), ys.min().coerceIn(0f, h), xs.max().coerceIn(0f, w), ys.max().coerceIn(0f, h),
+            ))
         } catch (t: Throwable) {
             Log.w(TAG, "still readback failed", t)
             req.done(null)

@@ -452,27 +452,33 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * MEMORY: the photo is the next frame of the video stream — the same size, framing, look
-     * and orientation a clip gets (no LCD band, no letterbox), with the date/time burned in when
-     * BURN OSD is ON in MEMORY.
+     * MEMORY: the photo is the picture exactly as the LCD shows it — read back from the preview
+     * stream and cropped to the picture rectangle (no LCD band, no letterbox), turned upright for
+     * the way the phone is held; date/time burned in when BURN OSD is ON in MEMORY.
      */
     private fun capturePhoto() {
-        val cam = camera
-        if (cam == null) {
+        if (camera == null) {
             haptics.fire(at.sturq.ccdcam.haptics.HapticEvent.ACTION_REJECTED)
             Toast.makeText(this, "Camera not ready", Toast.LENGTH_SHORT).show()
             return
         }
         binding.shutterBtn.isEnabled = false
-        val cw = EffectGeometry.uprightCwDegrees(
-            cam.cameraInfo.getSensorRotationDegrees(lastSurfaceRotation),
-            videoProcessor.outputRotationCw, mirrored = false,
-        )
+        val rot = photoRotationCw
         val takenMs = System.currentTimeMillis()
-        videoProcessor.requestStill(hc.photoOsdQuads(takenMs), videoOsdWidthFor(wide)) { frame ->
+        val date = hc.photoDateOn()
+        previewProcessor.requestStill { frame ->
             ioScope.launch {
                 val uri = try {
-                    frame?.let { savePhoto(stillToBitmap(it, cw), takenMs) }
+                    frame?.let {
+                        val bmp = stillToBitmap(it, rot)
+                        if (date) {
+                            val lcdW = at.sturq.ccdcam.osd.OsdScene.LCD_H * bmp.width / bmp.height
+                            at.sturq.ccdcam.osd.OsdCanvas.draw(
+                                applicationContext, bmp, at.sturq.ccdcam.osd.OsdScene.buildPhoto(takenMs, lcdW), lcdW,
+                            )
+                        }
+                        savePhoto(bmp, takenMs)
+                    }
                 } catch (t: Throwable) {
                     Log.w(TAG, "photo failed", t)
                     null
@@ -490,15 +496,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** GL pixels (bottom row first) → upright bitmap, turned like the clip would be. */
-    private fun stillToBitmap(f: CcdSurfaceProcessor.StillFrame, cw: Int): Bitmap {
+    /** GL pixels (bottom row first) -> the picture rectangle, upright for how the phone is held. */
+    private fun stillToBitmap(f: CcdSurfaceProcessor.StillFrame, rotCw: Int): Bitmap {
         val raw = Bitmap.createBitmap(f.width, f.height, Bitmap.Config.ARGB_8888)
-        raw.copyPixelsFromBuffer(f.rgba)
+        raw.copyPixelsFromBuffer(f.rgba)   // row 0 of raw = GL bottom row
+        // crop in GL coordinates (raw rows are GL rows); 1 px inset against the band edge
+        val x0 = Math.ceil(f.left.toDouble()).toInt() + 1
+        val x1 = Math.floor(f.right.toDouble()).toInt() - 1
+        val r0 = Math.ceil(f.bottom.toDouble()).toInt() + 1
+        val r1 = Math.floor(f.top.toDouble()).toInt() - 1
+        val w = (x1 - x0).coerceIn(1, f.width - x0)
+        val h = (r1 - r0).coerceIn(1, f.height - r0)
         val m = android.graphics.Matrix().apply {
-            postScale(1f, -1f)
-            if (cw != 0) postRotate(cw.toFloat())
+            postScale(1f, -1f)                              // GL bottom-up -> top-down
+            if (rotCw != 0) postRotate(rotCw.toFloat())     // upright for how the phone is held
         }
-        return Bitmap.createBitmap(raw, 0, 0, f.width, f.height, m, true).also { if (it !== raw) raw.recycle() }
+        val out = Bitmap.createBitmap(raw, x0, r0, w, h, m, true)
+        if (out !== raw) raw.recycle()
+        return if (out.isMutable) out else out.copy(Bitmap.Config.ARGB_8888, true)
     }
 
     private fun savePhoto(bmp: Bitmap, takenMs: Long): android.net.Uri? {
