@@ -203,3 +203,19 @@ LIGHT is the phone torch and is independent of NightShot.
 - [ ] Kill the app right after STOP: on next start the clip is published from files/rec.
 - [ ] PLAY/EDIT with NightShot on: no NightShot indicator or caption.
 - [ ] PLAY/EDIT, home, back: the clip shows the same frame, paused.
+
+## 19. Tactile feedback + STUDIO (stage 15)
+- [ ] STUDIO (body button): panel over the camera area; every PICTURE slider changes preview and
+      recording alike; RESET returns the look; values survive a restart.
+- [ ] NightShot + IR SPOT: edges darken like a weak built-in IR light; 0 % = even picture.
+- [ ] CAMERA: FOCUS MANUAL + slider moves focus (∞ … close); EXPOSURE shifts brightness; ZOOM.
+- [ ] TACTILE FEEDBACK OFF / SUBTLE (default) / MECHANICAL: OFF silent; MECHANICAL stronger
+      two-part switch / cassette feel. System touch feedback off → silent.
+- [ ] Sliders: a tick per step only, a different click at ×1 / 0, a thud at the ends; a fast
+      drag never buzzes continuously.
+- [ ] REC: tap = key click; the start/stop pulse comes when recording really starts/stops.
+      No cassette / tape end / PLAY/EDIT / grayed key: refused pulse, never a confirmation.
+- [ ] Eject / insert (long-press TAPE): short mechanical patterns; during REC: refused.
+- [ ] SPOT FOCUS: double tick only when focus locks; failure → refused.
+- [ ] Menu drum ▲▼: detent per row, end stop at the first/last row.
+- [ ] Recording, 25p, sound unchanged with haptics on.

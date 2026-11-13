@@ -32,6 +32,11 @@ data class ShaderParams(
     val chroma420: Float = 0f,
     /** PAL interlace weave (fields 1 frame apart), 0 = progressive, >0 = on. */
     val interlace: Float = 0f,
+    /**
+     * NightShot only: darkening towards the edges, as from the camcorder's weak built-in IR
+     * light (0 = even picture, 1 = strong spot). Visual emulation.
+     */
+    val irSpot: Float = 0.7f,
 )
 
 /**

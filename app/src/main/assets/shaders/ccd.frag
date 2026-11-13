@@ -36,6 +36,7 @@ uniform float uChroma420;      // 0..1: PAL DV 4:2:0 chroma (colour shared by 2x
 uniform float uFade;           // FADER: 0 = picture, 1 = fully faded to uFadeWhite
 uniform float uFadeWhite;      // 1 = WHITE FADER, 0 = BLACK FADER
 uniform float uNightShot;      // 1 = NightShot look (visual emulation, no IR involved)
+uniform float uIrSpot;         // NightShot: edge darkening of a weak built-in IR light, 0..1
 
 // GLSL ES 2.0 needs constant loop bounds, so sample counts stay compile-time constants.
 const int   SMEAR_SAMPLES = 8;
@@ -152,6 +153,11 @@ void main() {
         float nl = 1.0 - exp(-(sns ? 5.0 : 2.5) * max(luma(col), 0.0));
         float nn = (hash(uv * uResolution * 1.7 + uTime * 2.1) - 0.5) * (sns ? 0.16 : 0.10);
         col = vec3(0.70, 1.0, 0.96) * clamp(nl + nn, 0.0, 1.0);
+        // The built-in IR light reaches the centre (slightly above it) much better than the
+        // edges: a soft elliptical spot, black-ish corners at full strength.
+        vec2 d = (uv - vec2(0.5, 0.46)) * vec2(1.25, 1.0);
+        float spot = 1.0 - smoothstep(0.12, 0.72, length(d));
+        col *= mix(1.0, 0.06 + 0.94 * spot, clamp(uIrSpot, 0.0, 1.0));
     }
 
     float scan = (1.0 - uScanlineAmp) + uScanlineAmp * sin(uv.y * uLines * 3.14159);

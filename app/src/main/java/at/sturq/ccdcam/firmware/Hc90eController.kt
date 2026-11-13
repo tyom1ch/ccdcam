@@ -58,6 +58,8 @@ class Hc90eController(
         fun spotAuto()
         /** FADER on both processors. */
         fun setFade(amount: Float, white: Boolean)
+        /** Tactile feedback (Hc90eHapticEngine). */
+        fun haptic(event: at.sturq.ccdcam.haptics.HapticEvent) {}
     }
 
     val navigator = FirmwareNavigator(store.firmware, Lamp.TAPE)
@@ -127,6 +129,7 @@ class Hc90eController(
 
     fun setLamp(target: Lamp) {
         if (!active || target == navigator.lamp) return
+        host.haptic(at.sturq.ccdcam.haptics.HapticEvent.SWITCH_TOGGLE)   // POWER switch detent
         if (host.isRecording()) host.requestStopRecording()
         val from = navigator.lamp
         if (from == Lamp.PLAY_EDIT) leavePlayback()
@@ -166,6 +169,7 @@ class Hc90eController(
 
     /** NIGHTSHOT switch on the camcorder body: visual emulation only (no IR). */
     fun toggleNightShot() {
+        host.haptic(at.sturq.ccdcam.haptics.HapticEvent.SWITCH_TOGGLE)
         nightShotOn = !nightShotOn
         host.setNightShot(nightShotOn)
         b.firmwareOsd.nightShot = nightShotOn
@@ -176,8 +180,13 @@ class Hc90eController(
     /** LIGHT: the phone torch, independent of NightShot. */
     fun toggleLight() {
         val want = !lightOn
-        if (host.setLight(want)) lightOn = want
-        else Toast.makeText(context, "No light on this camera", Toast.LENGTH_SHORT).show()
+        if (host.setLight(want)) {
+            lightOn = want
+            host.haptic(at.sturq.ccdcam.haptics.HapticEvent.SWITCH_TOGGLE)
+        } else {
+            host.haptic(at.sturq.ccdcam.haptics.HapticEvent.ACTION_REJECTED)
+            Toast.makeText(context, "No light on this camera", Toast.LENGTH_SHORT).show()
+        }
         updateBodyLabels()
     }
 
@@ -195,15 +204,21 @@ class Hc90eController(
     }
 
     fun ejectOrInsert() {
-        if (!active || host.isRecording()) return
+        if (!active) return
+        if (host.isRecording()) {                         // the lid stays locked while recording
+            host.haptic(at.sturq.ccdcam.haptics.HapticEvent.ACTION_REJECTED)
+            return
+        }
         val s = navigator.settings
         if (s.cassette != null) {
             saveSettings(s.copy(cassette = null))
+            host.haptic(at.sturq.ccdcam.haptics.HapticEvent.TAPE_EJECT)
             playBeep(Beep.CASSETTE_EJECT)
             b.firmwareOsd.showMessage(MSG_INSERT_CASSETTE)
             Toast.makeText(context, "Cassette ejected. Long-press TAPE to insert a new DVM60.", Toast.LENGTH_SHORT).show()
         } else {
             saveSettings(s.copy(cassette = VirtualCassette.fresh()))
+            host.haptic(at.sturq.ccdcam.haptics.HapticEvent.TAPE_INSERT)
             playBeep(Beep.CASSETTE_INSERT)
             b.firmwareOsd.showRemaining()
             Toast.makeText(context, "New DVM60 cassette inserted.", Toast.LENGTH_SHORT).show()
@@ -222,6 +237,7 @@ class Hc90eController(
         if (msg != null) {
             b.firmwareOsd.showMessage(msg)
             playBeep(Beep.WARNING)
+            host.haptic(at.sturq.ccdcam.haptics.HapticEvent.ACTION_REJECTED)
             return false
         }
         if (navigator.isMenuOpen) navigator.close()
@@ -273,6 +289,8 @@ class Hc90eController(
     fun tapeLoopPcm(): FloatArray = beeps.tapeLoop()
 
     override fun onBeep(beep: Beep) = playBeep(beep)
+
+    override fun onHaptic(event: at.sturq.ccdcam.haptics.HapticEvent) = host.haptic(event)
 
     override fun onSpot(itemId: String, viewX: Float, viewY: Float) =
         host.spot(itemId == HC90eMenu.SPOT_FOCUS, viewX, viewY)
